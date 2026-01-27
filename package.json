@@ -7,10 +7,12 @@
   "scripts": {
     "start": "node fetch.js",
     "reset": "node reset.js",
-    "test": "echo \"No tests\""
+    "test": "node test.js"
   },
   "dependencies": {
-    "jsdom": "^23.0.0"
+    "jsdom": "^23.0.0",
+    "node-fetch": "^3.3.2",
+    "abort-controller": "^3.0.0"
   },
   "author": "Your Name",
   "license": "MIT"
