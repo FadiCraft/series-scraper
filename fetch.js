@@ -1,51 +1,60 @@
 const fs = require('fs');
-const axios = require('axios');
+const https = require('https');
 
-async function testAxios() {
-  try {
-    console.log('🔍 اختبار اتصال axios...');
-    
-    // استخدم موقع أبسط للتأكد من الاتصال
-    const response = await axios.get('https://httpbin.org/get', {
-      timeout: 10000, // 10 ثواني
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
-    });
-    
-    console.log('📊 حالة الرد:', response.status);
-    
-    const data = {
-      status: response.status,
-      url: response.config.url,
-      message: 'تم الاتصال بنجاح',
-      timestamp: new Date().toISOString(),
-      ip: response.data.origin || 'غير معروف'
-    };
-    
-    fs.writeFileSync('test.json', JSON.stringify(data, null, 2));
-    console.log('✅ نجاح! تم حفظ البيانات في test.json');
-    
-    // عرض جزء من البيانات
-    console.log('📝 البيانات:', JSON.stringify(data, null, 2));
-    
-  } catch (error) {
-    console.error('❌ خطأ:', error.message);
-    console.error('🔧 تفاصيل الخطأ:', error.code || 'لا يوجد كود');
-    
-    const errorData = { 
-      error: error.message,
-      code: error.code,
-      timestamp: new Date().toISOString(),
-      config: {
-        url: error.config?.url,
-        method: error.config?.method
-      }
-    };
-    
-    fs.writeFileSync('error.json', JSON.stringify(errorData, null, 2));
-    console.log('📁 تم حفظ تفاصيل الخطأ في error.json');
+console.log('🔍 اختبار الاتصال المباشر بدون axios...');
+
+// اختبار اتصال مباشر بـ Node.js
+const options = {
+  hostname: 'httpbin.org',
+  port: 443,
+  path: '/ip',
+  method: 'GET',
+  headers: {
+    'User-Agent': 'Node.js Test'
   }
-}
+};
 
-testAxios();
+const req = https.request(options, (res) => {
+  console.log('📊 حالة HTTP:', res.statusCode);
+  
+  let data = '';
+  res.on('data', (chunk) => {
+    data += chunk;
+  });
+  
+  res.on('end', () => {
+    try {
+      const result = JSON.parse(data);
+      console.log('✅ اتصال ناجح!');
+      console.log('🌐 IP الخاص بك:', result.origin);
+      
+      fs.writeFileSync('connection_test.json', JSON.stringify({
+        success: true,
+        status: res.statusCode,
+        your_ip: result.origin,
+        timestamp: new Date().toISOString()
+      }, null, 2));
+      
+    } catch (e) {
+      console.error('خطأ في تحويل JSON:', e.message);
+    }
+  });
+});
+
+req.on('error', (error) => {
+  console.error('❌ فشل الاتصال:', error.message);
+  
+  fs.writeFileSync('connection_error.json', JSON.stringify({
+    success: false,
+    error: error.message,
+    code: error.code,
+    timestamp: new Date().toISOString()
+  }, null, 2));
+});
+
+req.setTimeout(10000, () => {
+  console.error('⏰ انتهى وقت الانتظار');
+  req.destroy();
+});
+
+req.end();
