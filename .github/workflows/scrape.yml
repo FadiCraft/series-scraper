@@ -1,10 +1,10 @@
-name: 📺 اختبار التشغيل
+name: 📺 استخراج المسلسلات
 
 on:
-  workflow_dispatch:  # تشغيل يدوي فقط للاختبار
+  workflow_dispatch:
 
 jobs:
-  test-run:
+  scrape:
     runs-on: ubuntu-latest
     
     steps:
@@ -16,10 +16,40 @@ jobs:
         with:
           node-version: '18'
           
-      - name: 🚀 تشغيل البرنامج
-        run: node fetch.js
-        
-      - name: 📊 عرض النتيجة
+      - name: 📦 تثبيت الحزم (الطريقة الصحيحة)
         run: |
-          echo "النتيجة:"
-          cat test.json
+          echo "1. تنظيف أي ملفات قديمة..."
+          rm -rf node_modules package-lock.json
+          
+          echo "2. تهيئة مشروع npm جديد..."
+          npm init -y --silent
+          
+          echo "3. تثبيت axios..."
+          npm install axios@1.6.0 --save
+          
+          echo "4. التحقق من التثبيت..."
+          ls -la node_modules/
+          echo "axios مثبت:" && ls node_modules/axios/ || echo "❌ فشل تثبيت axios"
+          
+          echo "5. عرض package.json..."
+          cat package.json
+          
+      - name: 🚀 تشغيل البرنامج
+        run: |
+          echo "🔍 تشغيل fetch.js..."
+          node fetch.js
+          
+      - name: 📊 عرض النتائج
+        run: |
+          echo "📁 الملفات النهائية:"
+          ls -la
+          
+          if [ -f "test.json" ]; then
+            echo "✅ test.json:"
+            cat test.json
+          fi
+          
+          if [ -f "error.json" ]; then
+            echo "❌ error.json:"
+            cat error.json
+          fi
