@@ -1,0 +1,42 @@
+name: 📺 استخراج المسلسلات اليومي
+
+on:
+  schedule:
+    - cron: "0 4 * * *"  # الساعة 7 صباحاً بتوقيت إسطنبول
+  workflow_dispatch:      # تشغيل يدوي
+
+jobs:
+  scrape-series:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45  # وقت أطول لأن المسلسلات تحتاج وقت أكثر
+    
+    steps:
+      - name: 📥 تنزيل الكود
+        uses: actions/checkout@v3
+        
+      - name: ⚙️ إعداد Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: 📦 تثبيت الحزم
+        run: npm install
+        
+      - name: 🚀 تشغيل المستخرج
+        run: node fetch.js
+        
+      - name: 📊 عرض النتائج
+        run: |
+          echo "📈 النتائج النهائية:"
+          if [ -f "report.json" ]; then
+            cat report.json
+          fi
+          
+      - name: 📤 رفع التغييرات
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "📺 تحديث مسلسلات - $(date +'%Y-%m-%d %H:%M')" || echo "لا توجد تغييرات"
+          git push
