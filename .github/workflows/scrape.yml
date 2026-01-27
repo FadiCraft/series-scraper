@@ -15,41 +15,30 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+          cache: 'npm'  # هذا مهم للتسريع
           
-      - name: 📦 تثبيت الحزم (الطريقة الصحيحة)
+      - name: 📦 تثبيت الحزم بـ npm ci
         run: |
-          echo "1. تنظيف أي ملفات قديمة..."
-          rm -rf node_modules package-lock.json
+          echo "🔍 عرض الملفات الموجودة..."
+          ls -la
           
-          echo "2. تهيئة مشروع npm جديد..."
-          npm init -y --silent
+          echo "📦 تثبيت الحزم باستخدام npm ci..."
+          npm ci  # استخدم ci بدل install
           
-          echo "3. تثبيت axios..."
-          npm install axios@1.6.0 --save
-          
-          echo "4. التحقق من التثبيت..."
-          ls -la node_modules/
-          echo "axios مثبت:" && ls node_modules/axios/ || echo "❌ فشل تثبيت axios"
-          
-          echo "5. عرض package.json..."
-          cat package.json
+          echo "✅ التحقق من التثبيت..."
+          ls node_modules/ | grep -E "(axios|cheerio)"
           
       - name: 🚀 تشغيل البرنامج
         run: |
-          echo "🔍 تشغيل fetch.js..."
+          echo "▶️ تشغيل fetch.js..."
           node fetch.js
           
       - name: 📊 عرض النتائج
         run: |
           echo "📁 الملفات النهائية:"
-          ls -la
+          ls -la *.json *.csv 2>/dev/null || echo "لا توجد ملفات نتائج"
           
           if [ -f "test.json" ]; then
-            echo "✅ test.json:"
+            echo "📄 محتوى test.json:"
             cat test.json
-          fi
-          
-          if [ -f "error.json" ]; then
-            echo "❌ error.json:"
-            cat error.json
           fi
