@@ -1,7 +1,7 @@
 {
   "name": "series-scraper",
   "version": "1.0.0",
-  "type": "module",  // أضف هذا السطر!
+  "type": "module",
   "dependencies": {
     "axios": "^1.6.0",
     "cheerio": "^1.0.0"
