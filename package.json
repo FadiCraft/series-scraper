@@ -1,0 +1,17 @@
+{
+  "name": "series-scraper",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "مجموع مسلسلات من موقع topcinema",
+  "main": "fetch.js",
+  "scripts": {
+    "start": "node fetch.js",
+    "reset": "node reset.js",
+    "test": "echo \"No tests\""
+  },
+  "dependencies": {
+    "jsdom": "^23.0.0"
+  },
+  "author": "Your Name",
+  "license": "MIT"
+}
