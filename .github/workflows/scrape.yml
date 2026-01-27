@@ -1,14 +1,11 @@
-name: 📺 استخراج المسلسلات اليومي
+name: 📺 اختبار التشغيل
 
 on:
-  schedule:
-    - cron: "0 4 * * *"  # الساعة 7 صباحاً بتوقيت إسطنبول
-  workflow_dispatch:      # تشغيل يدوي
+  workflow_dispatch:  # تشغيل يدوي فقط للاختبار
 
 jobs:
-  scrape-series:
+  test-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # وقت أطول لأن المسلسلات تحتاج وقت أكثر
     
     steps:
       - name: 📥 تنزيل الكود
@@ -18,28 +15,11 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'npm'
           
-      - name: 🧹 تنظيف الكاش
-        run: npm cache clean --force
-          
-      - name: 📦 تثبيت الحزم
-        run: npm ci
-        
-      - name: 🚀 تشغيل المستخرج
+      - name: 🚀 تشغيل البرنامج
         run: node fetch.js
         
-      - name: 📊 عرض النتائج
+      - name: 📊 عرض النتيجة
         run: |
-          echo "📈 النتائج النهائية:"
-          if [ -f "report.json" ]; then
-            cat report.json
-          fi
-          
-      - name: 📤 رفع التغييرات
-        run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git add -A
-          git commit -m "📺 تحديث مسلسلات - $(date +'%Y-%m-%d %H:%M')" || echo "لا توجد تغييرات"
-          git push
+          echo "النتيجة:"
+          cat test.json
