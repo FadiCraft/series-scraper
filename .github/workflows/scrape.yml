@@ -20,8 +20,11 @@ jobs:
           node-version: '18'
           cache: 'npm'
           
+      - name: 🧹 تنظيف الكاش
+        run: npm cache clean --force
+          
       - name: 📦 تثبيت الحزم
-        run: npm install
+        run: npm ci
         
       - name: 🚀 تشغيل المستخرج
         run: node fetch.js
