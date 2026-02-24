@@ -1,10 +1,21 @@
 {
-  "name": "series-scraper",
+  "name": "ramadan-series-blogger",
   "version": "1.0.0",
-  "type": "module",
+  "description": "استخراج حلقة واحدة يومياً من لاروزا ونشرها على بلوجر ويوتيوب",
+  "main": "daily-extract.js",
+  "scripts": {
+    "start": "node daily-extract.js",
+    "test": "node daily-extract.js",
+    "youtube": "node YT_Publish.js"
+  },
   "dependencies": {
     "axios": "^1.6.0",
-    "cheerio": "^1.0.0",
-    "jsdom": "^22.0.0"
+    "cheerio": "^1.0.0-rc.12",
+    "fs-extra": "^11.1.1",
+    "googleapis": "^128.0.0",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
