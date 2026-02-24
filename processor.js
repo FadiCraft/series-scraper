@@ -10,38 +10,168 @@ const axios = require("axios");
   }
 });
 
-// ========== دالة تحميل الفيديو ==========
-async function downloadVideo(url, outputPath) {
-  console.log(`📥 تحميل الفيديو من: ${url}`);
-  
-  try {
-    const response = await axios({
-      method: 'GET',
-      url: url,
-      responseType: 'stream',
-      timeout: 300000,
-      maxContentLength: Infinity,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
+// ========== 20 قالب جديد حسب طلبك ==========
+const templates = [
+    // قالب 1: لقطة + تجميد 2ث + إعادة بسرعة 0.5
+    { name: "قالب 1", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 2.0 },
+        { type: "slow", speed: "0.5", duration: 2.0 }
+    ]},
     
-    const writer = fs.createWriteStream(outputPath);
-    response.data.pipe(writer);
+    // قالب 2: لقطة + تجميد 2ث + عكس + تجميد 2ث
+    { name: "قالب 2", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 2.0 },
+        { type: "reverse", duration: 2.0 },
+        { type: "freeze", duration: 2.0 }
+    ]},
     
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
+    // قالب 3: لقطة بسرعة 0.5 + تجميد 2ث + زوم خفيف + تجميد 1ث
+    { name: "قالب 3", effects: [
+        { type: "slow", speed: "0.5", duration: 2.0 },
+        { type: "freeze", duration: 2.0 },
+        { type: "zoom", value: "1.2", duration: 2.0 },
+        { type: "freeze", duration: 1.0 }
+    ]},
     
-    console.log(`✅ تم التحميل: ${outputPath}`);
-    return outputPath;
+    // قالب 4: لقطة + تجميد 1ث + عكس مع زوم + تجميد 1ث
+    { name: "قالب 4", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "reverse_zoom", value: "1.2", duration: 2.0 },
+        { type: "freeze", duration: 1.0 }
+    ]},
     
-  } catch (error) {
-    console.error("❌ فشل التحميل:", error.message);
-    throw error;
-  }
-}
+    // قالب 5: لقطة + تجميد 1ث + سرعة 1.2 + تجميد 1ث + سرعة 0.5
+    { name: "قالب 5", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "fast", speed: "1.2", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "slow", speed: "0.5", duration: 2.0 }
+    ]},
+    
+    // قالب 6: لقطة + قلب أفقي + تجميد 1ث + زوم خفيف
+    { name: "قالب 6", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "mirror", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "zoom", value: "1.2", duration: 2.0 }
+    ]},
+    
+    // قالب 7: لقطة بسرعة 0.75 + تجميد 1ث + عكس + طبيعي
+    { name: "قالب 7", effects: [
+        { type: "slow", speed: "0.75", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "reverse", duration: 2.0 },
+        { type: "normal", duration: 2.0 }
+    ]},
+    
+    // قالب 8: لقطة + تجميد 1ث + اهتزاز + تجميد 1ث + زوم داخلي
+    { name: "قالب 8", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "shake", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "zoom_in", value: "1.3", duration: 2.0 }
+    ]},
+    
+    // قالب 9: لقطة + سرعة 0.5 + تجميد 1ث + سرعة 1.5
+    { name: "قالب 9", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "slow", speed: "0.5", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "fast", speed: "1.5", duration: 2.0 }
+    ]},
+    
+    // قالب 10: لقطة + تجميد 1ث + عكس + تجميد 1ث + زوم خارجي
+    { name: "قالب 10", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "reverse", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "zoom_out", value: "0.8", duration: 2.0 }
+    ]},
+    
+    // قالب 11: لقطة + سطوع أعلى + تجميد 1ث + سرعة 0.75
+    { name: "قالب 11", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "brightness", value: "0.2", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "slow", speed: "0.75", duration: 2.0 }
+    ]},
+    
+    // قالب 12: لقطة + تجميد 1ث + تحريك يمين + تجميد 1ث + تحريك يسار
+    { name: "قالب 12", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "move_right", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "move_left", duration: 2.0 }
+    ]},
+    
+    // قالب 13: لقطة بسرعة 1.25 + تجميد 1ث + عكس بسرعة 0.75
+    { name: "قالب 13", effects: [
+        { type: "fast", speed: "1.25", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "reverse", speed: "0.75", duration: 2.0 }
+    ]},
+    
+    // قالب 14: لقطة + blur خفيف + تجميد 1ث + طبيعي
+    { name: "قالب 14", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "blur", value: "5", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "normal", duration: 2.0 }
+    ]},
+    
+    // قالب 15: لقطة + تجميد 1ث + زوم داخلي + تجميد 1ث + قلب أفقي
+    { name: "قالب 15", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "zoom_in", value: "1.3", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "mirror", duration: 2.0 }
+    ]},
+    
+    // قالب 16: لقطة + سرعة 0.5 + عكس + تجميد 1ث
+    { name: "قالب 16", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "slow", speed: "0.5", duration: 2.0 },
+        { type: "reverse", duration: 2.0 },
+        { type: "freeze", duration: 1.0 }
+    ]},
+    
+    // قالب 17: لقطة + تجميد 1ث + زوم مع تحريك للأعلى
+    { name: "قالب 17", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "zoom_up", value: "1.2", duration: 2.0 }
+    ]},
+    
+    // قالب 18: لقطة + سرعة 1.3 + تجميد 1ث + عكس مع زوم
+    { name: "قالب 18", effects: [
+        { type: "fast", speed: "1.3", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "reverse_zoom", value: "1.2", duration: 2.0 }
+    ]},
+    
+    // قالب 19: لقطة + تجميد 1ث + تباين عالي + تجميد 1ث
+    { name: "قالب 19", effects: [
+        { type: "normal", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "contrast", value: "1.5", duration: 2.0 },
+        { type: "freeze", duration: 1.0 }
+    ]},
+    
+    // قالب 20: لقطة + سرعة 0.75 + تجميد 1ث + اهتزاز خفيف
+    { name: "قالب 20", effects: [
+        { type: "slow", speed: "0.75", duration: 2.0 },
+        { type: "freeze", duration: 1.0 },
+        { type: "shake", duration: 2.0 }
+    ]}
+];
 
 // دالة للحصول على دقة الفيديو
 function getVideoResolution(videoPath) {
@@ -52,7 +182,6 @@ function getVideoResolution(videoPath) {
         const [width, height] = output.split(',').map(Number);
         return { width, height };
     } catch (error) {
-        console.log("⚠️ لا يمكن قراءة دقة الفيديو، استخدام القيم الافتراضية");
         return { width: 854, height: 480 };
     }
 }
@@ -65,7 +194,6 @@ function getAudioDuration(audioPath) {
         ).toString();
         return parseFloat(output);
     } catch (error) {
-        console.error("❌ خطأ في قراءة مدة الصوت:", error.message);
         return 0;
     }
 }
@@ -105,81 +233,7 @@ function parseScriptFile(scriptPath) {
     return scenes;
 }
 
-// ========== قوالب التأثيرات العشرة ==========
-const templates = [
-    // قالب 1
-    { name: "قالب 1", effects: [
-        { type: "zoom", value: "1.2", duration: 1.0 },
-        { type: "freeze", duration: 1.5 },
-        { type: "color", value: "colorbalance=rs=0.1:gs=-0.1:bs=-0.1", duration: 2.0 },
-        { type: "normal", duration: 2.5 }
-    ]},
-    // قالب 2
-    { name: "قالب 2", effects: [
-        { type: "brightness", value: "0.1", duration: 1.5 },
-        { type: "freeze_zoom", duration: 2.0, zoom: "1.3" },
-        { type: "crop", value: "0.8", duration: 2.5 },
-        { type: "normal", duration: 1.5 }
-    ]},
-    // قالب 3
-    { name: "قالب 3", effects: [
-        { type: "mirror", duration: 1.5 },
-        { type: "slow", speed: "0.7", duration: 2.0 },
-        { type: "cut", duration: 0.5 },
-        { type: "zoom", value: "1.4", duration: 2.5 }
-    ]},
-    // قالب 4
-    { name: "قالب 4", effects: [
-        { type: "slow", speed: "0.6", duration: 2.0 },
-        { type: "contrast", value: "1.3", duration: 1.5 },
-        { type: "freeze", duration: 1.5 },
-        { type: "normal", duration: 2.0 }
-    ]},
-    // قالب 5
-    { name: "قالب 5", effects: [
-        { type: "zoom", value: "1.15", duration: 1.5 },
-        { type: "cut", duration: 0.3 },
-        { type: "hue", value: "hue=h=10:s=1.2", duration: 2.5 },
-        { type: "normal", duration: 2.0 }
-    ]},
-    // قالب 6
-    { name: "قالب 6", effects: [
-        { type: "crop_vertical", value: "0.7", duration: 1.5 },
-        { type: "slow", speed: "0.5", duration: 2.0 },
-        { type: "freeze", duration: 1.5 },
-        { type: "normal", duration: 2.0 }
-    ]},
-    // قالب 7
-    { name: "قالب 7", effects: [
-        { type: "color_temp", value: "colorbalance=rs=0.2:bs=-0.1", duration: 1.5 },
-        { type: "mirror", duration: 1.5 },
-        { type: "cut", duration: 0.4 },
-        { type: "zoom", value: "1.25", duration: 2.5 }
-    ]},
-    // قالب 8
-    { name: "قالب 8", effects: [
-        { type: "reverse", duration: 2.0 },
-        { type: "zoom", value: "1.1", duration: 1.5 },
-        { type: "freeze", duration: 1.5 },
-        { type: "normal", duration: 2.0 }
-    ]},
-    // قالب 9
-    { name: "قالب 9", effects: [
-        { type: "saturation", value: "0.7", duration: 1.5 },
-        { type: "freeze", duration: 1.5 },
-        { type: "slow", speed: "0.8", duration: 2.0 },
-        { type: "normal", duration: 2.0 }
-    ]},
-    // قالب 10
-    { name: "قالب 10", effects: [
-        { type: "zoom", value: "1.2", duration: 1.5 },
-        { type: "slow", speed: "0.6", duration: 2.0 },
-        { type: "cut", duration: 0.3 },
-        { type: "normal", duration: 2.5 }
-    ]}
-];
-
-// تطبيق قالب عشوائي على مقطع
+// تطبيق قالب عشوائي على مقطع (نسخة سريعة)
 async function applyRandomTemplate(videoPath, startTime, sceneIndex, outputPath) {
     console.log(`   🎨 تطبيق قالب عشوائي على المشهد ${sceneIndex + 1}`);
     
@@ -187,7 +241,7 @@ async function applyRandomTemplate(videoPath, startTime, sceneIndex, outputPath)
     const template = templates[randomIndex];
     console.log(`      📋 القالب المختار: ${template.name}`);
     
-    // قص المقطع الأصلي (2 ثانية)
+    // قص المقطع الأصلي (2 ثانية) - باستخدام ultrafast للتسريع
     const originalClip = `temp/scene_${sceneIndex}_original.mp4`;
     
     execSync(
@@ -208,55 +262,54 @@ async function applyRandomTemplate(videoPath, startTime, sceneIndex, outputPath)
         let filter = '';
         
         switch(effect.type) {
-            case 'zoom':
-                filter = `zoompan=z='min(zoom+0.01,${effect.value})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'normal':
+                filter = 'null';
                 break;
             case 'freeze':
                 filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB`;
                 break;
-            case 'freeze_zoom':
-                filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB,zoompan=z='min(zoom+0.005,${effect.zoom})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'slow':
+                filter = `setpts=${effect.speed}*PTS`;
+                break;
+            case 'fast':
+                filter = `setpts=${effect.speed}*PTS`;
+                break;
+            case 'reverse':
+                filter = 'reverse';
+                break;
+            case 'reverse_zoom':
+                filter = `reverse,zoompan=z='min(zoom+0.01,${effect.value})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+                break;
+            case 'zoom':
+            case 'zoom_in':
+                filter = `zoompan=z='min(zoom+0.01,${effect.value})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+                break;
+            case 'zoom_out':
+                filter = `zoompan=z='max(zoom-0.01,${effect.value})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+                break;
+            case 'zoom_up':
+                filter = `zoompan=z='min(zoom+0.01,${effect.value})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-10':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+                break;
+            case 'mirror':
+                filter = 'hflip';
                 break;
             case 'brightness':
                 filter = `eq=brightness=${effect.value}`;
                 break;
-            case 'crop':
-                const cropWidth = Math.floor(width * parseFloat(effect.value));
-                filter = `crop=${cropWidth}:${height}`;
-                break;
-            case 'crop_vertical':
-                const cropHeight = Math.floor(height * parseFloat(effect.value));
-                filter = `crop=${width}:${cropHeight}`;
-                break;
-            case 'mirror':
-                filter = `hflip`;
-                break;
-            case 'slow':
-                filter = `setpts=${effect.speed}*PTS`;
-                break;
             case 'contrast':
                 filter = `eq=contrast=${effect.value}`;
                 break;
-            case 'color':
-            case 'color_temp':
-            case 'hue':
-                filter = effect.value;
+            case 'blur':
+                filter = `boxblur=${effect.value}`;
                 break;
-            case 'saturation':
-                filter = `eq=saturation=${effect.value}`;
+            case 'shake':
+                filter = `shake=1.5:5:10`;
                 break;
-            case 'reverse':
-                filter = `reverse`;
+            case 'move_right':
+                filter = `pad=iw+100:ih:ow-100:0,zoompan=z=1:x='min(100,on)*2':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
-            case 'cut':
-                execSync(
-                    `ffmpeg -y -f lavfi -i color=c=black:s=${width}x${height}:d=${effect.duration} -c:v libx264 -preset fast "${effectOutput}"`,
-                    { stdio: 'pipe' }
-                );
-                effectFiles.push(effectOutput);
-                continue;
-            case 'normal':
-                filter = 'null';
+            case 'move_left':
+                filter = `pad=iw+100:ih:0:0,zoompan=z=1:x='max(0,100-on)*2':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
             default:
                 filter = 'null';
@@ -264,20 +317,20 @@ async function applyRandomTemplate(videoPath, startTime, sceneIndex, outputPath)
         
         const inputFile = i === 0 ? originalClip : effectFiles[i-1];
         
+        // استخدام preset ultrafast للتسريع
         if (filter !== 'null' && filter !== '') {
             try {
                 execSync(
-                    `ffmpeg -y -i "${inputFile}" -vf "${filter}" -c:v libx264 -preset fast -t ${effect.duration} "${effectOutput}"`,
+                    `ffmpeg -y -i "${inputFile}" -vf "${filter}" -c:v libx264 -preset ultrafast -t ${effect.duration} "${effectOutput}"`,
                     { stdio: 'pipe' }
                 );
             } catch (error) {
-                console.log(`      ⚠️ فشل التأثير ${effect.type}، استخدام النسخة الأصلية`);
                 execSync(
                     `ffmpeg -y -i "${inputFile}" -c copy -t ${effect.duration} "${effectOutput}"`,
                     { stdio: 'pipe' }
                 );
             }
-        } else if (filter === 'null') {
+        } else {
             execSync(
                 `ffmpeg -y -i "${inputFile}" -c copy -t ${effect.duration} "${effectOutput}"`,
                 { stdio: 'pipe' }
@@ -307,6 +360,39 @@ async function applyRandomTemplate(videoPath, startTime, sceneIndex, outputPath)
     return outputPath;
 }
 
+// دالة تحميل الفيديو
+async function downloadVideo(url, outputPath) {
+    console.log(`📥 تحميل الفيديو من: ${url}`);
+    
+    try {
+        const response = await axios({
+            method: 'GET',
+            url: url,
+            responseType: 'stream',
+            timeout: 300000,
+            maxContentLength: Infinity,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        
+        const writer = fs.createWriteStream(outputPath);
+        response.data.pipe(writer);
+        
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+        
+        console.log(`✅ تم التحميل: ${outputPath}`);
+        return outputPath;
+        
+    } catch (error) {
+        console.error("❌ فشل التحميل:", error.message);
+        throw error;
+    }
+}
+
 // دمج الفيديو مع الصوت
 function mergeWithAudio(videoPath, audioPath, outputPath) {
     console.log("🎵 دمج الفيديو مع الصوت...");
@@ -330,7 +416,6 @@ async function main() {
     
     if (!videoUrl) {
         console.error("❌ الرجاء تحديد رابط الفيديو");
-        console.log("📌 مثال: node processor.js https://example.com/video.mp4 script.txt Sund.mp3");
         process.exit(1);
     }
     
@@ -346,14 +431,28 @@ async function main() {
     
     // قراءة المشاهد
     console.log(`📄 قراءة ملف النص: ${scriptFile}`);
-    const scenes = parseScriptFile(scriptFile);
-    console.log(`✅ تم العثور على ${scenes.length} مشهد`);
+    const availableScenes = parseScriptFile(scriptFile);
+    console.log(`✅ المشاهد المتاحة: ${availableScenes.length} مشهد`);
     
     // مدة الصوت
     const audioDuration = getAudioDuration(audioFile);
     console.log(`🎵 مدة ملف الصوت: ${audioDuration.toFixed(1)} ثانية`);
     
-    // 1️⃣ تحميل الفيديو أولاً
+    // حساب عدد المشاهد المطلوبة (كل مشهد حوالي 6-8 ثواني حسب القالب)
+    const avgSceneDuration = 7.0;
+    const requiredScenesCount = Math.floor(audioDuration / avgSceneDuration);
+    console.log(`📊 نحتاج: ${requiredScenesCount} مشهد تقريباً`);
+    
+    // اختيار المشاهد بالترتيب مع التكرار
+    const selectedScenes = [];
+    for (let i = 0; i < requiredScenesCount; i++) {
+        const sceneIndex = i % availableScenes.length;
+        selectedScenes.push(availableScenes[sceneIndex]);
+    }
+    
+    console.log(`📋 تم اختيار ${selectedScenes.length} مشهد`);
+    
+    // 1️⃣ تحميل الفيديو
     console.log("\n📥 المرحلة 1: تحميل الفيديو...");
     const downloadedVideo = "downloads/video.mp4";
     await downloadVideo(videoUrl, downloadedVideo);
@@ -362,11 +461,10 @@ async function main() {
     console.log("\n🎬 المرحلة 2: معالجة المشاهد...");
     const sceneVideos = [];
     
-    for (let i = 0; i < scenes.length; i++) {
-        const scene = scenes[i];
-        console.log(`\n🎬 معالجة المشهد ${i + 1}/${scenes.length}`);
+    for (let i = 0; i < selectedScenes.length; i++) {
+        const scene = selectedScenes[i];
+        console.log(`\n🎬 معالجة المشهد ${i + 1}/${selectedScenes.length}`);
         console.log(`   ⏱️  ${Math.floor(scene.start/60)}:${Math.floor(scene.start%60).toString().padStart(2,'0')}`);
-        console.log(`   📝 ${scene.text.substring(0, 50)}...`);
         
         const finalScenePath = `temp/scene_${i}_final.mp4`;
         await applyRandomTemplate(downloadedVideo, scene.start, i, finalScenePath);
@@ -386,7 +484,7 @@ async function main() {
         { stdio: 'pipe' }
     );
     
-    // 4️⃣ دمج مع الصوت
+    // 4️⃣ إضافة الصوت
     console.log("\n🎵 المرحلة 4: إضافة الصوت...");
     const timestamp = new Date().getTime();
     const finalVideo = `output/final_${timestamp}.mp4`;
@@ -398,10 +496,11 @@ async function main() {
     console.log(`\n✅✅✅ تم بنجاح! ✅✅✅`);
     console.log(`   📁 الفيديو: ${finalVideo}`);
     console.log(`   📦 الحجم: ${(stats.size / (1024*1024)).toFixed(2)} MB`);
-    console.log(`   🎬 عدد المشاهد: ${scenes.length}`);
+    console.log(`   🎬 المشاهد: ${selectedScenes.length}`);
+    console.log(`   🎨 القوالب: 20 قالب عشوائي`);
     
     // تنظيف
-    console.log("\n🧹 تنظيف الملفات المؤقتة...");
+    console.log("\n🧹 تنظيف...");
     try {
         const tempDir = 'temp';
         if (fs.existsSync(tempDir)) {
