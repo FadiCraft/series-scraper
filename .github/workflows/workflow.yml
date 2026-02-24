@@ -4,16 +4,8 @@ on:
   workflow_dispatch:  # يتيح لك تشغيله يدوياً
     inputs:
       video_url:
-        description: 'رابط الفيديو'
+        description: '🔗 رابط الفيديو'
         required: true
-      script_file:
-        description: 'ملف النص'
-        required: true
-        default: 'script.txt'
-      audio_file:
-        description: 'ملف الصوت'
-        required: true
-        default: 'Sund.mp3'
 
 jobs:
   process:
@@ -64,16 +56,38 @@ jobs:
       run: |
         mkdir -p output temp downloads
         
-    - name: 📝 عرض الملفات الموجودة
+    - name: 📝 التحقق من الملفات المحلية
       run: |
-        echo "=== الملفات الموجودة ==="
+        echo "=== 📄 الملفات الموجودة في المشروع ==="
         ls -la
-        echo "=== محتوى script.txt ==="
-        cat script.txt || echo "ملف script.txt غير موجود"
+        echo ""
+        echo "=== 📝 محتوى script.txt ==="
+        if [ -f "script.txt" ]; then
+          cat script.txt
+          echo ""
+          echo "✅ ملف script.txt موجود"
+        else
+          echo "❌ ملف script.txt غير موجود!"
+          exit 1
+        fi
+        echo ""
+        echo "=== 🎵 ملف الصوت ==="
+        if [ -f "Sund.mp3" ]; then
+          echo "✅ ملف Sund.mp3 موجود"
+          echo "حجم الملف: $(du -h Sund.mp3 | cut -f1)"
+        else
+          echo "❌ ملف Sund.mp3 غير موجود!"
+          exit 1
+        fi
         
     - name: 🎬 تشغيل المعالج
       run: |
-        time node processor.js "${{ github.event.inputs.video_url }}" "${{ github.event.inputs.script_file }}" "${{ github.event.inputs.audio_file }}"
+        echo "🚀 بدء المعالجة..."
+        echo "🔗 الرابط: ${{ github.event.inputs.video_url }}"
+        echo "📝 ملف النص: script.txt"
+        echo "🎵 ملف الصوت: Sund.mp3"
+        echo ""
+        time node processor.js "${{ github.event.inputs.video_url }}" "script.txt" "Sund.mp3"
         
     - name: 📤 رفع الفيديو الناتج
       uses: actions/upload-artifact@v4
@@ -81,6 +95,17 @@ jobs:
         name: الفيديو-النهائي
         path: output/*.mp4
         retention-days: 7
+        
+    - name: 📊 عرض النتيجة
+      if: success()
+      run: |
+        echo ""
+        echo "✅✅✅ تمت المعالجة بنجاح! ✅✅✅"
+        echo ""
+        echo "📁 الفيديو النهائي موجود في مجلد output/"
+        ls -la output/
+        echo ""
+        echo "📦 حجم الفيديو: $(du -h output/*.mp4 | cut -f1)"
         
     - name: 🧹 تنظيف
       if: always()
