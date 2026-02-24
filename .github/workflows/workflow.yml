@@ -1,12 +1,21 @@
 name: Video Processing Pipeline
 
 on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'رابط الفيديو المباشر (mp4)'
+        required: true
+        default: 'https://example.com/video.mp4'
+      audio_url:
+        description: 'رابط ملف الصوت (mp3) - اختياري'
+        required: false
+        default: ''
   push:
     branches: [ main ]
     paths:
-      - 'input/**'
       - 'script.txt'
-  workflow_dispatch:
+      - 'input/sound.mp3'
 
 jobs:
   process:
@@ -21,23 +30,77 @@ jobs:
       with:
         node-version: '18'
     
-    - name: تثبيت FFmpeg
+    - name: تثبيت FFmpeg وأدوات التحميل
       run: |
         sudo apt-get update
-        sudo apt-get install -y ffmpeg
+        sudo apt-get install -y ffmpeg wget curl
         ffmpeg -version
+    
+    - name: إنشاء المجلدات المطلوبة
+      run: |
+        mkdir -p input temp_clips output
+    
+    - name: تحميل الفيديو من الرابط
+      run: |
+        echo "📥 تحميل الفيديو من: ${{ github.event.inputs.video_url }}"
+        if [ -z "${{ github.event.inputs.video_url }}" ] && [ -f "input/video.mp4" ]; then
+          echo "✅ استخدام الفيديو المحلي: input/video.mp4"
+        else
+          # استخدام الرابط من المدخلات
+          VIDEO_URL="${{ github.event.inputs.video_url }}"
+          if [ -z "$VIDEO_URL" ]; then
+            echo "❌ لا يوجد رابط فيديو"
+            exit 1
+          fi
+          # تحميل الفيديو
+          wget -O input/video.mp4 "$VIDEO_URL" || curl -L -o input/video.mp4 "$VIDEO_URL"
+          if [ ! -f "input/video.mp4" ] || [ ! -s "input/video.mp4" ]; then
+            echo "❌ فشل تحميل الفيديو"
+            exit 1
+          fi
+          echo "✅ تم تحميل الفيديو بنجاح"
+        fi
+    
+    - name: تحميل الصوت من الرابط (إذا وجد)
+      run: |
+        if [ ! -z "${{ github.event.inputs.audio_url }}" ]; then
+          echo "📥 تحميل الصوت من: ${{ github.event.inputs.audio_url }}"
+          wget -O input/sound.mp3 "${{ github.event.inputs.audio_url }}" || curl -L -o input/sound.mp3 "${{ github.event.inputs.audio_url }}"
+          if [ -f "input/sound.mp3" ] && [ -s "input/sound.mp3" ]; then
+            echo "✅ تم تحميل الصوت بنجاح"
+          else
+            echo "⚠️ فشل تحميل الصوت، سيتم استخدام الصوت المحلي إن وجد"
+          fi
+        else
+          echo "📁 استخدام الصوت المحلي من input/sound.mp3 (إن وجد)"
+        fi
+    
+    - name: التحقق من وجود الملفات الأساسية
+      run: |
+        echo "📁 محتويات مجلد input:"
+        ls -la input/
+        
+        if [ ! -f "input/video.mp4" ]; then
+          echo "❌ ملف الفيديو غير موجود"
+          exit 1
+        fi
+        
+        if [ ! -f "script.txt" ]; then
+          echo "❌ ملف script.txt غير موجود"
+          exit 1
+        fi
+        
+        # الصوت اختياري - إذا لم يوجد، سنستخدم الصوت من الفيديو
+        if [ ! -f "input/sound.mp3" ]; then
+          echo "⚠️ لا يوجد ملف صوت، سيتم استخدام الصوت الأصلي من الفيديو"
+        fi
+        
+        echo "✅ الملفات الأساسية موجودة"
     
     - name: تثبيت الاعتماديات
       run: |
         npm init -y
         npm install fluent-ffmpeg
-    
-    - name: عرض هيكل المجلدات (للتشخيص)
-      run: |
-        echo "📁 محتويات المجلد الحالي:"
-        ls -la
-        echo "\n📁 محتويات مجلد input:"
-        ls -la input/ || echo "المجلد input غير موجود"
     
     - name: تشغيل سكربت المعالجة
       run: node processor.js
@@ -50,7 +113,6 @@ jobs:
         name: video-summary-${{ github.run_number }}
         path: output/final_summary.mp4
         retention-days: 7
-        if-no-files-found: error
     
     - name: رفع ملفات التشخيص (في حالة الفشل)
       if: failure()
@@ -58,7 +120,8 @@ jobs:
       with:
         name: debug-files-${{ github.run_number }}
         path: |
+          input/
           temp_clips/
-          *.log
           script.txt
+          *.log
         retention-days: 3
