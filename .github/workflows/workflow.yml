@@ -1,97 +1,89 @@
-name: 🎬 إنشاء ملخص الفيلم التلقائي
+name: معالجة الفيديو
 
 on:
-  push:
-    paths:
-      - 'script.txt'
-  workflow_dispatch:
+  workflow_dispatch:  # يتيح لك تشغيله يدوياً
     inputs:
       video_url:
-        description: 'رابط الفيديو (YouTube, مباشر، الخ)'
+        description: 'رابط الفيديو'
         required: true
-        default: 'https://example.com/video.mp4'
+      script_file:
+        description: 'ملف النص'
+        required: true
+        default: 'script.txt'
+      audio_file:
+        description: 'ملف الصوت'
+        required: true
+        default: 'Sund.mp3'
 
 jobs:
-  create-summary:
+  process:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 استنساخ المستودع
+    - name: 📥 تحميل الكود
       uses: actions/checkout@v4
       
-    - name: 🔧 تثبيت الأدوات الأساسية
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg espeak python3 python3-pip
+    - name: ⚡ Cache FFmpeg
+      id: cache-ffmpeg
+      uses: actions/cache@v3
+      with:
+        path: ~/ffmpeg
+        key: ${{ runner.os }}-ffmpeg-6.1
         
+    - name: 📦 تثبيت FFmpeg (مخزن)
+      if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
+      run: |
+        mkdir -p ~/ffmpeg
+        wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+        tar -xf ffmpeg-release-amd64-static.tar.xz -C ~/ffmpeg --strip-components=1
+        rm ffmpeg-release-amd64-static.tar.xz
+        
+    - name: 🔧 إضافة FFmpeg إلى PATH
+      run: |
+        echo "$HOME/ffmpeg" >> $GITHUB_PATH
+        echo "$HOME/ffmpeg" >> ~/.bashrc
+        
+    - name: ⚡ Cache Node Modules
+      uses: actions/cache@v3
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+          
     - name: 📦 تثبيت Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
+        cache: 'npm'
         
-    - name: 📦 إنشاء ملف package.json
-      run: |
-        cat > package.json << 'EOF'
-        {
-          "name": "molahas-movie-summary",
-          "version": "1.0.0",
-          "description": "نظام تلقائي لصناعة فيديوهات تلخيص الأفلام",
-          "main": "Molahas.js",
-          "dependencies": {
-            "axios": "^1.6.0",
-            "youtube-dl-exec": "^2.1.6",
-            "ffmpeg-static": "^5.2.0",
-            "ffprobe-static": "^3.1.0"
-          }
-        }
-        EOF
-        
-    - name: 📦 تثبيت الحزم
-      run: |
-        npm install
-        # تأكد من تثبيت الحزم
-        npm list
-        
-    - name: 📝 التحقق من وجود ملف النص
-      run: |
-        if [ ! -f "script.txt" ]; then
-          echo "❌ ملف script.txt غير موجود!"
-          echo "📝 إنشاء ملف تجريبي..."
-          cat > script.txt << 'EOF'
-        00:00-00:30 | مشهد تجريبي أول
-        00:30-01:00 | مشهد تجريبي ثاني
-        EOF
-        fi
-        
-    - name: 🌐 تحديد مصدر الفيديو
-      id: video-source
-      run: |
-        if [[ -f "movie.mp4" ]]; then
-          echo "source=movie.mp4" >> $GITHUB_OUTPUT
-          echo "📁 استخدام الفيديو المحلي: movie.mp4"
-        else
-          echo "source=${{ github.event.inputs.video_url }}" >> $GITHUB_OUTPUT
-          echo "🌐 استخدام الرابط: ${{ github.event.inputs.video_url }}"
-        fi
-    
-    - name: 🎬 تشغيل نظام الملخص
-      run: |
-        echo "🚀 بدء تشغيل processor.js"
-        node processor.js "${{ steps.video-source.outputs.source }}" script.txt
+    - name: 📥 تثبيت الحزم
+      run: npm ci || npm install
       
-    - name: 📤 رفع الفيديو النهائي
+    - name: 📁 تحضير الملفات
+      run: |
+        mkdir -p output temp downloads
+        
+    - name: 📝 عرض الملفات الموجودة
+      run: |
+        echo "=== الملفات الموجودة ==="
+        ls -la
+        echo "=== محتوى script.txt ==="
+        cat script.txt || echo "ملف script.txt غير موجود"
+        
+    - name: 🎬 تشغيل المعالج
+      run: |
+        time node processor.js "${{ github.event.inputs.video_url }}" "${{ github.event.inputs.script_file }}" "${{ github.event.inputs.audio_file }}"
+        
+    - name: 📤 رفع الفيديو الناتج
       uses: actions/upload-artifact@v4
       with:
-        name: movie-summary
+        name: الفيديو-النهائي
         path: output/*.mp4
-        if-no-files-found: warn
+        retention-days: 7
         
-    - name: 📦 إنشاء إصدار جديد
-      if: success()
-      uses: softprops/action-gh-release@v2
-      with:
-        files: output/*.mp4
-        name: "ملخص الفيلم - ${{ github.run_number }}"
-        tag_name: v${{ github.run_number }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: 🧹 تنظيف
+      if: always()
+      run: |
+        rm -rf temp/*
+        echo "✅ تم التنظيف"
