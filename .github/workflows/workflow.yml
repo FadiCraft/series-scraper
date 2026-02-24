@@ -1,7 +1,7 @@
 name: معالجة الفيديو
 
 on:
-  workflow_dispatch:  # يتيح لك تشغيله يدوياً
+  workflow_dispatch:
     inputs:
       video_url:
         description: '🔗 رابط الفيديو'
@@ -22,7 +22,7 @@ jobs:
         path: ~/ffmpeg
         key: ${{ runner.os }}-ffmpeg-6.1
         
-    - name: 📦 تثبيت FFmpeg (مخزن)
+    - name: 📦 تثبيت FFmpeg
       if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
       run: |
         mkdir -p ~/ffmpeg
@@ -31,84 +31,36 @@ jobs:
         rm ffmpeg-release-amd64-static.tar.xz
         
     - name: 🔧 إضافة FFmpeg إلى PATH
-      run: |
-        echo "$HOME/ffmpeg" >> $GITHUB_PATH
-        echo "$HOME/ffmpeg" >> ~/.bashrc
-        
-    - name: ⚡ Cache Node Modules
-      uses: actions/cache@v3
-      with:
-        path: ~/.npm
-        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-node-
+      run: echo "$HOME/ffmpeg" >> $GITHUB_PATH
           
     - name: 📦 تثبيت Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        cache: 'npm'
         
     - name: 📥 تثبيت الحزم
-      run: npm ci || npm install
-      
-    - name: 📁 تحضير الملفات
       run: |
-        mkdir -p output temp downloads
+        npm init -y
+        npm install axios youtube-dl-exec fs path child_process
         
-    - name: 📝 التحقق من الملفات المحلية
+    - name: 📁 تحضير الملفات
+      run: mkdir -p output temp downloads
+        
+    - name: 📝 التحقق من الملفات
       run: |
-        echo "=== 📄 الملفات الموجودة في المشروع ==="
-        ls -la
+        echo "📄 script.txt:"
+        cat script.txt
         echo ""
-        echo "=== 📝 محتوى script.txt ==="
-        if [ -f "script.txt" ]; then
-          cat script.txt
-          echo ""
-          echo "✅ ملف script.txt موجود"
-        else
-          echo "❌ ملف script.txt غير موجود!"
-          exit 1
-        fi
-        echo ""
-        echo "=== 🎵 ملف الصوت ==="
-        if [ -f "Sund.mp3" ]; then
-          echo "✅ ملف Sund.mp3 موجود"
-          echo "حجم الملف: $(du -h Sund.mp3 | cut -f1)"
-        else
-          echo "❌ ملف Sund.mp3 غير موجود!"
-          exit 1
-        fi
+        echo "🎵 Sund.mp3:"
+        ls -la Sund.mp3
         
     - name: 🎬 تشغيل المعالج
       run: |
-        echo "🚀 بدء المعالجة..."
-        echo "🔗 الرابط: ${{ github.event.inputs.video_url }}"
-        echo "📝 ملف النص: script.txt"
-        echo "🎵 ملف الصوت: Sund.mp3"
-        echo ""
-        time node processor.js "${{ github.event.inputs.video_url }}" "script.txt" "Sund.mp3"
+        time node processor.js "${{ github.event.inputs.video_url }}" script.txt Sund.mp3
         
-    - name: 📤 رفع الفيديو الناتج
+    - name: 📤 رفع الفيديو
       uses: actions/upload-artifact@v4
       with:
         name: الفيديو-النهائي
         path: output/*.mp4
         retention-days: 7
-        
-    - name: 📊 عرض النتيجة
-      if: success()
-      run: |
-        echo ""
-        echo "✅✅✅ تمت المعالجة بنجاح! ✅✅✅"
-        echo ""
-        echo "📁 الفيديو النهائي موجود في مجلد output/"
-        ls -la output/
-        echo ""
-        echo "📦 حجم الفيديو: $(du -h output/*.mp4 | cut -f1)"
-        
-    - name: 🧹 تنظيف
-      if: always()
-      run: |
-        rm -rf temp/*
-        echo "✅ تم التنظيف"
