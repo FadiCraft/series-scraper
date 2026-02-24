@@ -1,442 +1,97 @@
-const { execSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
-const youtubedl = require('youtube-dl-exec');
+name: 🎬 إنشاء ملخص الفيلم التلقائي
 
-// التأكد من وجود المجلدات
-['output', 'temp', 'downloads'].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir);
-  }
-});
+on:
+  push:
+    paths:
+      - 'script.txt'
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'رابط الفيديو (YouTube, مباشر، الخ)'
+        required: true
+        default: 'https://example.com/video.mp4'
 
-// تحميل الفيديو من رابط مباشر
-async function downloadFromUrl(url, outputPath) {
-  console.log(`📥 تحميل الفيديو من: ${url}`);
-  
-  try {
-    if (url.includes('youtube.com') || url.includes('youtu.be') || 
-        url.includes('facebook.com') || url.includes('twitter.com') || 
-        url.includes('tiktok.com') || url.includes('instagram.com')) {
+jobs:
+  create-summary:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 استنساخ المستودع
+      uses: actions/checkout@v4
       
-      console.log("🔄 استخدام youtube-dl لتحميل من المنصة...");
-      await youtubedl(url, {
-        output: outputPath,
-        format: 'mp4',
-        noCheckCertificate: true
-      });
-      
-    } else {
-      console.log("🔄 تحميل من رابط مباشر...");
-      const response = await axios({
-        method: 'GET',
-        url: url,
-        responseType: 'stream',
-        timeout: 300000,
-        maxContentLength: Infinity,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    - name: 🔧 تثبيت الأدوات الأساسية
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg espeak python3 python3-pip
+        
+    - name: 📦 تثبيت Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: 📦 إنشاء ملف package.json
+      run: |
+        cat > package.json << 'EOF'
+        {
+          "name": "molahas-movie-summary",
+          "version": "1.0.0",
+          "description": "نظام تلقائي لصناعة فيديوهات تلخيص الأفلام",
+          "main": "Molahas.js",
+          "dependencies": {
+            "axios": "^1.6.0",
+            "youtube-dl-exec": "^2.1.6",
+            "ffmpeg-static": "^5.2.0",
+            "ffprobe-static": "^3.1.0"
+          }
         }
-      });
+        EOF
+        
+    - name: 📦 تثبيت الحزم
+      run: |
+        npm install
+        # تأكد من تثبيت الحزم
+        npm list
+        
+    - name: 📝 التحقق من وجود ملف النص
+      run: |
+        if [ ! -f "script.txt" ]; then
+          echo "❌ ملف script.txt غير موجود!"
+          echo "📝 إنشاء ملف تجريبي..."
+          cat > script.txt << 'EOF'
+        00:00-00:30 | مشهد تجريبي أول
+        00:30-01:00 | مشهد تجريبي ثاني
+        EOF
+        fi
+        
+    - name: 🌐 تحديد مصدر الفيديو
+      id: video-source
+      run: |
+        if [[ -f "movie.mp4" ]]; then
+          echo "source=movie.mp4" >> $GITHUB_OUTPUT
+          echo "📁 استخدام الفيديو المحلي: movie.mp4"
+        else
+          echo "source=${{ github.event.inputs.video_url }}" >> $GITHUB_OUTPUT
+          echo "🌐 استخدام الرابط: ${{ github.event.inputs.video_url }}"
+        fi
+    
+    - name: 🎬 تشغيل نظام الملخص
+      run: |
+        echo "🚀 بدء تشغيل processor.js"
+        node processor.js "${{ steps.video-source.outputs.source }}" script.txt
       
-      const writer = fs.createWriteStream(outputPath);
-      response.data.pipe(writer);
-      
-      await new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
-      });
-    }
-    
-    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-      console.log(`✅ تم التحميل بنجاح: ${outputPath}`);
-      return outputPath;
-    } else {
-      throw new Error("الملف فارغ أو لم يتم تحميله");
-    }
-    
-  } catch (error) {
-    console.error("❌ خطأ في التحميل:", error.message);
-    
-    try {
-      console.log("🔄 محاولة بديلة باستخدام FFmpeg...");
-      execSync(`ffmpeg -y -i "${url}" -c copy ${outputPath}`, { 
-        stdio: 'inherit',
-        timeout: 300000 
-      });
-      return outputPath;
-    } catch (ffmpegError) {
-      throw new Error(`فشل تحميل الفيديو: ${error.message}`);
-    }
-  }
-}
-
-// قراءة ملف النص
-function parseScriptFile(scriptPath) {
-  const content = fs.readFileSync(scriptPath, "utf8");
-  const lines = content.split("\n").filter(line => line.trim() !== "");
-  
-  const scenes = [];
-  
-  for (const line of lines) {
-    const match = line.match(/(\d+:\d+)-(\d+:\d+)\s*\|\s*(.+)/);
-    
-    if (match) {
-      const startTime = timeToSeconds(match[1]);
-      const endTime = timeToSeconds(match[2]);
-      const description = match[3];
-      
-      scenes.push({
-        start: startTime,
-        end: endTime,
-        duration: endTime - startTime,
-        text: description
-      });
-    }
-  }
-  
-  return scenes;
-}
-
-// تحويل الوقت من صيغة دقائق:ثواني إلى ثواني
-function timeToSeconds(timeStr) {
-  const parts = timeStr.split(":");
-  if (parts.length === 2) {
-    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-  }
-  return parseInt(timeStr);
-}
-
-// ========== الأهم: توليد تعليق صوتي عربي فصيح باستخدام Chatterbox ==========
-async function generateArabicVoiceover(text, outputPath) {
-  console.log(`🎙️ توليد تعليق صوتي عربي فصيح (Chatterbox): "${text.substring(0, 50)}..."`);
-  
-  try {
-    // استخدام نموذج Chatterbox Multilingual [citation:3][citation:7]
-    // هذا مثال لاستخدام API - قد يحتاج تعديل حسب توثيق Chatterbox الرسمي
-    
-    // الخيار 1: استخدام API إذا كان متاحاً (يفضل التواصل مع Resemble AI للحصول على API key)
-    // حالياً، النموذج متاح للتحميل والتشغيل المحلي عبر GitHub [citation:7]
-    
-    // للتبسيط، سنستخدم طريقة بديلة: تحميل النموذج وتشغيله محلياً
-    // هذا يتطلب تثبيت حزمة chatterbox عبر pip (للبيثون) ولكن بما أن الكود جافاسكريبت،
-    // سنستخدم API مؤقت أو طريقة بديلة
-    
-    // للأسف، Chatterbox يعمل عبر Python بشكل أساسي [citation:7]
-    // لذلك سنستخدم Luvvoice API كبديل ممتاز ومجاني يدعم العربية [citation:4][citation:8]
-    
-    return await generateArabicVoiceoverLuvvoice(text, outputPath);
-    
-  } catch (error) {
-    console.error("❌ خطأ في توليد الصوت:", error.message);
-    
-    // backup: استخدام Google TTS
-    console.log("⚠️ استخدام Google TTS كبديل...");
-    return await generateArabicVoiceoverGoogle(text, outputPath);
-  }
-}
-
-// بديل ممتاز: Luvvoice - مجاني ويدعم العربية [citation:4][citation:8][citation:10]
-async function generateArabicVoiceoverLuvvoice(text, outputPath) {
-  console.log(`🎙️ توليد تعليق صوتي عربي (Luvvoice): "${text.substring(0, 50)}..."`);
-  
-  try {
-    // Luvvoice خدمة مجانية رائعة، 200 صوت وأكثر من 70 لغة [citation:4]
-    // الخطة المجانية: 20,000 حرف شهرياً [citation:4][citation:8]
-    
-    // هذا مثال تقريبي - قد يحتاج تعديل حسب API الفعلي
-    const response = await axios({
-      method: 'POST',
-      url: 'https://api.luvvoice.com/v1/tts', // رابط تقريبي - راجع موقعهم للرابط الصحيح
-      data: {
-        text: text,
-        language: 'ar',
-        voice: 'ar-1', // اختر الصوت المناسب للعربية الفصحى
-        speed: 1.0,
-        pitch: 1.0
-      },
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'audio/mpeg'
-      },
-      responseType: 'arraybuffer',
-      timeout: 30000
-    });
-    
-    fs.writeFileSync(`${outputPath}.mp3`, response.data);
-    console.log("✅ تم توليد الصوت بنجاح!");
-    
-    return `${outputPath}.mp3`;
-  } catch (error) {
-    console.error("❌ خطأ في Luvvoice:", error.message);
-    throw error;
-  }
-}
-
-// البديل الثالث: Google Translate TTS (مجاني وسريع)
-async function generateArabicVoiceoverGoogle(text, outputPath) {
-  console.log(`🎙️ توليد تعليق صوتي عربي (Google): "${text.substring(0, 50)}..."`);
-  
-  try {
-    const encodedText = encodeURIComponent(text);
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=ar&client=tw-ob`;
-    
-    const response = await axios({
-      method: 'GET',
-      url: url,
-      responseType: 'arraybuffer',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    fs.writeFileSync(`${outputPath}.mp3`, response.data);
-    console.log("✅ تم توليد الصوت بنجاح باستخدام Google TTS");
-    
-    return `${outputPath}.mp3`;
-  } catch (error) {
-    console.error("❌ خطأ في Google TTS:", error.message);
-    
-    // آخر بديل: توليد صوت تجريبي
-    console.log("⚠️ استخدام صوت تجريبي...");
-    execSync(`ffmpeg -y -f lavfi -i "sine=frequency=1000:duration=3" -ar 22050 ${outputPath}.mp3`);
-    return `${outputPath}.mp3`;
-  }
-}
-
-// قص مقطع من الفيديو
-function cutVideoSegment(inputVideo, start, duration, outputPath) {
-  console.log(`🎞️ قص مقطع من ${start.toFixed(2)}s لمدة ${duration.toFixed(2)}s`);
-  
-  execSync(
-    `ffmpeg -y -ss ${start} -t ${duration} -i "${inputVideo}" ` +
-    `-c:v libx264 -c:a aac ${outputPath}`
-  );
-  
-  return outputPath;
-}
-
-// عمل مونتاج سينمائي (تجميد + زوم)
-function applyCinematicEffects(inputVideo, voiceoverPath, outputPath) {
-  console.log("🎬 تطبيق تأثيرات سينمائية...");
-  
-  const durationOutput = execSync(
-    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputVideo}"`
-  ).toString();
-  const videoDuration = parseFloat(durationOutput);
-  
-  const voiceDurationOutput = execSync(
-    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${voiceoverPath}"`
-  ).toString();
-  const voiceDuration = parseFloat(voiceDurationOutput);
-  
-  const targetDuration = Math.max(videoDuration, voiceDuration) + 2;
-  const freezeFrames = Math.ceil((targetDuration - videoDuration) * 30);
-  
-  const filterComplex = `
-    [0:v]trim=0:${videoDuration},setpts=PTS-STARTPTS[main];
-    [0:v]trim=${videoDuration-0.04}:${videoDuration},setpts=PTS-STARTPTS,loop=loop=${freezeFrames}:size=1,setpts=N/FRAME_RATE/TB[frozen];
-    [frozen]zoompan=z='min(zoom+0.002,1.3)':d=1:fps=30[zoomed];
-    [main][zoomed]concat=n=2:v=1:a=0[finalv]
-  `;
-  
-  try {
-    execSync(
-      `ffmpeg -y -i "${inputVideo}" -i "${voiceoverPath}" ` +
-      `-filter_complex "${filterComplex}" ` +
-      `-map "[finalv]" -map 1:a -c:v libx264 -c:a aac -shortest "${outputPath}"`,
-      { stdio: 'pipe' }
-    );
-  } catch (error) {
-    console.log("⚠️ خطأ في التأثيرات المتقدمة، استخدام التأثيرات البسيطة...");
-    execSync(
-      `ffmpeg -y -i "${inputVideo}" -i "${voiceoverPath}" ` +
-      `-c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`
-    );
-  }
-  
-  return outputPath;
-}
-
-// دمج جميع المقاطع
-function concatVideos(videoList, outputPath) {
-  console.log("🔗 دمج جميع المقاطع...");
-  
-  const listFile = "temp/concat_list.txt";
-  const content = videoList.map(v => `file '${path.resolve(v)}'`).join("\n");
-  fs.writeFileSync(listFile, content);
-  
-  execSync(
-    `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${outputPath}"`
-  );
-  
-  return outputPath;
-}
-
-// الحصول على معلومات الفيديو
-function getVideoInfo(videoPath) {
-  try {
-    const output = execSync(
-      `ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 "${videoPath}"`
-    ).toString();
-    
-    const lines = output.split('\n');
-    const info = {};
-    lines.forEach(line => {
-      const [key, value] = line.split('=');
-      if (key && value) info[key] = value;
-    });
-    
-    return {
-      duration: parseFloat(info.duration) || 0,
-      size: parseInt(info.size) || 0
-    };
-  } catch (error) {
-    return { duration: 0, size: 0 };
-  }
-}
-
-// تنظيف الملفات المؤقتة
-function cleanup() {
-  console.log("🧹 تنظيف الملفات المؤقتة...");
-  
-  try {
-    const tempDir = 'temp';
-    if (fs.existsSync(tempDir)) {
-      const files = fs.readdirSync(tempDir);
-      files.forEach(file => {
-        if (file.endsWith('.mp4') || file.endsWith('.mp3') || file.endsWith('.txt')) {
-          try { fs.unlinkSync(path.join(tempDir, file)); } catch (e) {}
-        }
-      });
-    }
-  } catch (error) {
-    console.log("⚠️ خطأ في تنظيف الملفات المؤقتة:", error.message);
-  }
-}
-
-// ============= الوظيفة الرئيسية =============
-async function main() {
-  console.log("🚀 بدء مشروع ملخص الأفلام التلقائي");
-  console.log("=".repeat(50));
-  
-  const videoSource = process.argv[2];
-  const scriptFile = process.argv[3] || "script.txt";
-  
-  if (!videoSource) {
-    console.error("❌ الرجاء تحديد مصدر الفيديو (رابط أو مسار ملف)");
-    console.log("📌 مثال: node Molahas.js https://example.com/video.mp4 script.txt");
-    console.log("📌 مثال: node Molahas.js movie.mp4 script.txt");
-    process.exit(1);
-  }
-  
-  if (!fs.existsSync(scriptFile)) {
-    console.error(`❌ ملف النص ${scriptFile} غير موجود`);
-    console.log("📝 مثال لمحتوى الملف:");
-    console.log("00:00-01:30 | يبدأ الفيلم بمشهد البطل");
-    console.log("01:30-03:00 | يتعرض لهجوم مفاجئ");
-    process.exit(1);
-  }
-  
-  let videoPath;
-  let isUrl = videoSource.startsWith('http://') || videoSource.startsWith('https://');
-  
-  if (isUrl) {
-    console.log(`🌐 المصدر: رابط (${videoSource.substring(0, 100)}...)`);
-    videoPath = "downloads/downloaded_video.mp4";
-    
-    try {
-      await downloadFromUrl(videoSource, videoPath);
-    } catch (error) {
-      console.error("❌ فشل تحميل الفيديو:", error.message);
-      process.exit(1);
-    }
-  } else {
-    console.log(`📁 المصدر: ملف محلي (${videoSource})`);
-    if (!fs.existsSync(videoSource)) {
-      console.error(`❌ الملف ${videoSource} غير موجود`);
-      process.exit(1);
-    }
-    videoPath = videoSource;
-  }
-  
-  const videoInfo = getVideoInfo(videoPath);
-  const durationMinutes = Math.floor(videoInfo.duration / 60);
-  const durationSeconds = Math.floor(videoInfo.duration % 60);
-  console.log(`📊 معلومات الفيديو:`);
-  console.log(`   - المدة: ${durationMinutes}:${durationSeconds.toString().padStart(2, '0')}`);
-  console.log(`   - الحجم: ${(videoInfo.size / (1024*1024)).toFixed(2)} MB`);
-  
-  console.log(`\n📄 قراءة ملف النص: ${scriptFile}`);
-  const scenes = parseScriptFile(scriptFile);
-  console.log(`✅ تم العثور على ${scenes.length} مشهد`);
-  
-  const validScenes = scenes.filter(scene => scene.end <= videoInfo.duration);
-  if (validScenes.length < scenes.length) {
-    console.log(`⚠️ تم تجاهل ${scenes.length - validScenes.length} مشهد يتجاوز مدة الفيديو`);
-  }
-  
-  if (validScenes.length === 0) {
-    console.error("❌ لا يوجد مشاهد صالحة في ملف النص");
-    process.exit(1);
-  }
-  
-  const sceneVideos = [];
-  
-  for (let i = 0; i < validScenes.length; i++) {
-    const scene = validScenes[i];
-    console.log(`\n🎬 معالجة المشهد ${i + 1}/${validScenes.length}`);
-    console.log(`   ⏱️  ${Math.floor(scene.start/60)}:${Math.floor(scene.start%60).toString().padStart(2,'0')} - ${Math.floor(scene.end/60)}:${Math.floor(scene.end%60).toString().padStart(2,'0')}`);
-    console.log(`   📝 ${scene.text.substring(0, 100)}${scene.text.length > 100 ? '...' : ''}`);
-    
-    const voicePath = `temp/voice_${i}.mp3`;
-    await generateArabicVoiceover(scene.text, `temp/voice_${i}`);
-    
-    const clipPath = `temp/clip_${i}.mp4`;
-    cutVideoSegment(videoPath, scene.start, scene.duration, clipPath);
-    
-    const finalScenePath = `temp/scene_${i}.mp4`;
-    applyCinematicEffects(clipPath, voicePath, finalScenePath);
-    
-    sceneVideos.push(finalScenePath);
-  }
-  
-  console.log("\n🔗 دمج جميع المشاهد...");
-  const timestamp = new Date().getTime();
-  const finalVideo = `output/final_summary_${timestamp}.mp4`;
-  concatVideos(sceneVideos, finalVideo);
-  
-  const finalInfo = getVideoInfo(finalVideo);
-  const finalMinutes = Math.floor(finalInfo.duration / 60);
-  const finalSeconds = Math.floor(finalInfo.duration % 60);
-  console.log(`\n✅ تم إنشاء الفيديو النهائي:`);
-  console.log(`   📁 المسار: ${finalVideo}`);
-  console.log(`   ⏱️  المدة: ${finalMinutes}:${finalSeconds.toString().padStart(2, '0')}`);
-  console.log(`   📦 الحجم: ${(finalInfo.size / (1024*1024)).toFixed(2)} MB`);
-  console.log(`   🎬 عدد المشاهد: ${validScenes.length}`);
-  
-  cleanup();
-  
-  console.log("\n✨ انتهى العمل بنجاح!");
-}
-
-if (require.main === module) {
-  main().catch(error => {
-    console.error("❌ خطأ غير متوقع:", error);
-    process.exit(1);
-  });
-}
-
-module.exports = {
-  downloadFromUrl,
-  parseScriptFile,
-  timeToSeconds,
-  generateArabicVoiceover,
-  cutVideoSegment,
-  applyCinematicEffects,
-  concatVideos,
-  getVideoInfo,
-  cleanup,
-  main
-};
+    - name: 📤 رفع الفيديو النهائي
+      uses: actions/upload-artifact@v4
+      with:
+        name: movie-summary
+        path: output/*.mp4
+        if-no-files-found: warn
+        
+    - name: 📦 إنشاء إصدار جديد
+      if: success()
+      uses: softprops/action-gh-release@v2
+      with:
+        files: output/*.mp4
+        name: "ملخص الفيلم - ${{ github.run_number }}"
+        tag_name: v${{ github.run_number }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
