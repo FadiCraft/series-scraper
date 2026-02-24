@@ -7,74 +7,58 @@ on:
       - 'input/**'
       - 'script.txt'
   workflow_dispatch:
-    inputs:
-      quality:
-        description: 'جودة الفيديو (high/medium/low)'
-        required: true
-        default: 'medium'
 
 jobs:
   process:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [18.x]
     
     steps:
-    - uses: actions/checkout@v4  # تحديث إلى v4 أيضاً
+    - name: استنساخ المستودع
+      uses: actions/checkout@v4
     
-    - name: استخدام Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4  # تحديث إلى v4
+    - name: إعداد Node.js
+      uses: actions/setup-node@v4
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: '18'
     
-    - name: تثبيت FFmpeg والاعتماديات
+    - name: تثبيت FFmpeg
       run: |
         sudo apt-get update
         sudo apt-get install -y ffmpeg
-        npm ci
+        ffmpeg -version
     
-    - name: التحقق من الملفات
+    - name: تثبيت الاعتماديات
       run: |
-        if [ ! -f "input/video.mp4" ]; then
-          echo "❌ ملف الفيديو غير موجود"
-          exit 1
-        fi
-        if [ ! -f "input/sound.mp3" ]; then
-          echo "❌ ملف الصوت غير موجود"
-          exit 1
-        fi
-        if [ ! -f "script.txt" ]; then
-          echo "❌ ملف السكريبت غير موجود"
-          exit 1
-        fi
-        echo "✅ جميع الملفات موجودة"
+        npm init -y
+        npm install fluent-ffmpeg
     
-    - name: معالجة الفيديو
+    - name: عرض هيكل المجلدات (للتشخيص)
       run: |
-        mkdir -p temp_clips output
-        node processor.js
-      env:
-        QUALITY: ${{ github.event.inputs.quality || 'medium' }}
+        echo "📁 محتويات المجلد الحالي:"
+        ls -la
+        echo "\n📁 محتويات مجلد input:"
+        ls -la input/ || echo "المجلد input غير موجود"
     
-    - name: رفع النتائج
-      uses: actions/upload-artifact@v4  # ✅ تم التحديث إلى v4
-      with:
-        name: processed-video-${{ github.run_number }}
-        path: |
-          output/final_summary.mp4
-          script.txt
-        if-no-files-found: error
-        retention-days: 7  # ميزة جديدة في v4
+    - name: تشغيل سكربت المعالجة
+      run: node processor.js
+      continue-on-error: false
     
-    - name: إرسال إشعار بالنجاح
+    - name: رفع الفيديو الناتج
       if: success()
-      run: |
-        echo "✅ تم إنشاء الفيديو بنجاح!"
-        echo "📁 يمكنك تحميله من Artifacts"
+      uses: actions/upload-artifact@v4
+      with:
+        name: video-summary-${{ github.run_number }}
+        path: output/final_summary.mp4
+        retention-days: 7
+        if-no-files-found: error
     
-    - name: إرسال إشعار بالفشل
+    - name: رفع ملفات التشخيص (في حالة الفشل)
       if: failure()
-      run: |
-        echo "❌ فشل في إنشاء الفيديو"
-        exit 1
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-files-${{ github.run_number }}
+        path: |
+          temp_clips/
+          *.log
+          script.txt
+        retention-days: 3
