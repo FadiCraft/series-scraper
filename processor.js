@@ -2,7 +2,6 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-const youtubedl = require('youtube-dl-exec');
 
 // التأكد من وجود المجلدات
 ['output', 'temp', 'downloads'].forEach(dir => {
@@ -16,7 +15,6 @@ async function downloadVideo(url, outputPath) {
   console.log(`📥 تحميل الفيديو من: ${url}`);
   
   try {
-    // استخدام axios للتحميل المباشر
     const response = await axios({
       method: 'GET',
       url: url,
@@ -199,7 +197,6 @@ async function applyRandomTemplate(videoPath, startTime, sceneIndex, outputPath)
     
     // الحصول على دقة الفيديو الأصلي
     const { width, height } = getVideoResolution(originalClip);
-    console.log(`      📐 دقة الفيديو: ${width}x${height}`);
     
     // تطبيق التأثيرات حسب القالب
     const effectFiles = [];
@@ -311,37 +308,13 @@ async function applyRandomTemplate(videoPath, startTime, sceneIndex, outputPath)
 }
 
 // دمج الفيديو مع الصوت
-function mergeWithAudio(videoPath, audioPath, outputPath, targetDuration) {
+function mergeWithAudio(videoPath, audioPath, outputPath) {
     console.log("🎵 دمج الفيديو مع الصوت...");
     
-    const videoDuration = parseFloat(execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`
-    ).toString());
-    
-    const speedFactor = videoDuration / targetDuration;
-    
-    if (Math.abs(speedFactor - 1) > 0.05) {
-        console.log(`      ⚡ تعديل سرعة الفيديو بعامل ${speedFactor.toFixed(2)}`);
-        
-        const tempVideo = `temp/temp_speed.mp4`;
-        
-        execSync(
-            `ffmpeg -y -i "${videoPath}" -filter:v "setpts=${speedFactor}*PTS" -an "${tempVideo}"`,
-            { stdio: 'pipe' }
-        );
-        
-        execSync(
-            `ffmpeg -y -i "${tempVideo}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`,
-            { stdio: 'pipe' }
-        );
-        
-        try { fs.unlinkSync(tempVideo); } catch (e) {}
-    } else {
-        execSync(
-            `ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`,
-            { stdio: 'pipe' }
-        );
-    }
+    execSync(
+        `ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`,
+        { stdio: 'pipe' }
+    );
     
     return outputPath;
 }
@@ -357,6 +330,7 @@ async function main() {
     
     if (!videoUrl) {
         console.error("❌ الرجاء تحديد رابط الفيديو");
+        console.log("📌 مثال: node processor.js https://example.com/video.mp4 script.txt Sund.mp3");
         process.exit(1);
     }
     
@@ -375,17 +349,9 @@ async function main() {
     const scenes = parseScriptFile(scriptFile);
     console.log(`✅ تم العثور على ${scenes.length} مشهد`);
     
-    // حساب المدة المتوقعة
-    const videoDuration = scenes.length * 7.5;
-    console.log(`⏱️ المدة المتوقعة للفيديو: ${videoDuration.toFixed(1)} ثانية`);
-    
     // مدة الصوت
     const audioDuration = getAudioDuration(audioFile);
     console.log(`🎵 مدة ملف الصوت: ${audioDuration.toFixed(1)} ثانية`);
-    
-    if (Math.abs(videoDuration - audioDuration) > 1) {
-        console.log(`⚠️ تحذير: المدة مختلفة، سيتم تعديل السرعة`);
-    }
     
     // 1️⃣ تحميل الفيديو أولاً
     console.log("\n📥 المرحلة 1: تحميل الفيديو...");
@@ -425,16 +391,17 @@ async function main() {
     const timestamp = new Date().getTime();
     const finalVideo = `output/final_${timestamp}.mp4`;
     
-    mergeWithAudio(concatedVideo, audioFile, finalVideo, audioDuration);
+    mergeWithAudio(concatedVideo, audioFile, finalVideo);
     
     // عرض النتيجة
     const stats = fs.statSync(finalVideo);
     console.log(`\n✅✅✅ تم بنجاح! ✅✅✅`);
     console.log(`   📁 الفيديو: ${finalVideo}`);
     console.log(`   📦 الحجم: ${(stats.size / (1024*1024)).toFixed(2)} MB`);
+    console.log(`   🎬 عدد المشاهد: ${scenes.length}`);
     
     // تنظيف
-    console.log("\n🧹 تنظيف...");
+    console.log("\n🧹 تنظيف الملفات المؤقتة...");
     try {
         const tempDir = 'temp';
         if (fs.existsSync(tempDir)) {
