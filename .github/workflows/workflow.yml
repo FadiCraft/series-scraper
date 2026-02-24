@@ -1,0 +1,54 @@
+name: إنشاء ملخص الفيلم تلقائياً
+
+on:
+  push:
+    paths:
+      - 'input/video.mp4'
+      - 'input/sound.mp3'
+      - 'script.txt'
+  workflow_dispatch: # للسماح بالتشغيل اليدوي
+
+jobs:
+  generate-video-summary:
+    name: معالجة الفيديو وإنشاء الملخص
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: استنساخ المستودع
+        uses: actions/checkout@v3
+      
+      - name: تثبيت FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+      
+      - name: تثبيت Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: تثبيت الاعتماديات
+        run: |
+          npm init -y
+          npm install fluent-ffmpeg fs path
+      
+      - name: إنشاء المجلدات المطلوبة
+        run: |
+          mkdir -p temp_clips
+          mkdir -p output
+      
+      - name: تشغيل سكربت المعالجة
+        run: node processor.js
+      
+      - name: رفع الفيديو الناتج كـ Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: video-summary
+          path: output/final_summary.mp4
+          retention-days: 7
+      
+      - name: تنظيف الملفات المؤقتة
+        run: |
+          rm -rf temp_clips
+          echo "✅ تم التنظيف بنجاح"
