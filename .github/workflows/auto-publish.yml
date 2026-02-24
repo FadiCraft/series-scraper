@@ -1,0 +1,46 @@
+name: نشر يومي تلقائي
+
+on:
+  schedule:
+    # ينشر كل 10 دقيقة
+    - cron: '*/10 * * * *'
+  workflow_dispatch:  # للتشغيل اليدوي
+  push:
+    branches: [ main ]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: تحميل المستودع
+      uses: actions/checkout@v4
+      
+    - name: إعداد Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: تثبيت الحزم
+      run: |
+        npm init -y
+        npm install axios cheerio fs-extra
+        
+    - name: تشغيل النشر
+      run: node extract-and-publish.js
+      
+    - name: حفظ الحالة
+      uses: actions/upload-artifact@v4
+      with:
+        name: published-state
+        path: |
+          state.json
+          posts/*.html
+          
+    - name: تحديث المستودع
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        git add state.json posts/
+        git commit -m "نشر تلقائي: $(date)" || exit 0
+        git push
