@@ -11,20 +11,34 @@ const crypto = require("crypto");
   }
 });
 
-// ========== قوالب التأثيرات العشرة ==========
+// دالة للحصول على دقة الفيديو
+function getVideoResolution(videoPath) {
+    try {
+        const output = execSync(
+            `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${videoPath}"`
+        ).toString().trim();
+        const [width, height] = output.split(',').map(Number);
+        return { width, height };
+    } catch (error) {
+        console.log("⚠️ لا يمكن قراءة دقة الفيديو، استخدام القيم الافتراضية");
+        return { width: 854, height: 480 };
+    }
+}
+
+// ========== قوالب التأثيرات العشرة (معدلة لتناسب أي دقة) ==========
 const templates = [
     // قالب 1
     { name: "قالب 1", effects: [
         { type: "zoom", value: "1.2", duration: 1.0 },
         { type: "freeze", duration: 1.5 },
-        { type: "clip", duration: 2.0, filter: "colorbalance=rs=0.1:gs=-0.1:bs=-0.1" },
+        { type: "color", value: "colorbalance=rs=0.1:gs=-0.1:bs=-0.1", duration: 2.0 },
         { type: "normal", duration: 2.5 }
     ]},
     // قالب 2
     { name: "قالب 2", effects: [
         { type: "brightness", value: "0.1", duration: 1.5 },
         { type: "freeze_zoom", duration: 2.0, zoom: "1.3" },
-        { type: "crop", value: "100:1080", duration: 2.5 },
+        { type: "crop", value: "0.8", duration: 2.5 }, // نسبة مئوية
         { type: "normal", duration: 1.5 }
     ]},
     // قالب 3
@@ -45,12 +59,12 @@ const templates = [
     { name: "قالب 5", effects: [
         { type: "zoom", value: "1.15", duration: 1.5 },
         { type: "cut", duration: 0.3 },
-        { type: "color_shift", value: "hue=h=10:s=1.2", duration: 2.5 },
+        { type: "hue", value: "hue=h=10:s=1.2", duration: 2.5 },
         { type: "normal", duration: 2.0 }
     ]},
     // قالب 6
     { name: "قالب 6", effects: [
-        { type: "crop_vertical", value: "800:1080", duration: 1.5 },
+        { type: "crop_vertical", value: "0.7", duration: 1.5 }, // نسبة مئوية
         { type: "slow", speed: "0.5", duration: 2.0 },
         { type: "freeze", duration: 1.5 },
         { type: "normal", duration: 2.0 }
@@ -133,13 +147,8 @@ function getAudioDuration(audioPath) {
     }
 }
 
-// حساب المدة الإجمالية للمشاهد (كل مشهد 7.5 ثانية)
-function calculateTotalVideoDuration(scenesCount) {
-    return scenesCount * 7.5; // 7.5 ثانية لكل مشهد
-}
-
-// تطبيق قالب عشوائي على مقطع
-async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath) {
+// تطبيق قالب عشوائي على مقطع (نسخة معدلة ومصححة)
+async function applyRandomTemplate(videoUrl, startTime, sceneIndex, outputPath) {
     console.log(`   🎨 تطبيق قالب عشوائي على المشهد ${sceneIndex + 1}`);
     
     // اختيار قالب عشوائي
@@ -147,43 +156,51 @@ async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath
     const template = templates[randomIndex];
     console.log(`      📋 القالب المختار: ${template.name}`);
     
-    // قص المقطع الأصلي (2 ثانية)
+    // قص المقطع الأصلي (2 ثانية) مباشرة من الرابط
     const originalClip = `temp/scene_${sceneIndex}_original.mp4`;
+    
+    // استخدام ffmpeg مع خيار -seekable 1 للتعامل مع الروابط بشكل أفضل
     execSync(
-        `ffmpeg -y -ss ${startTime} -t 2 -i "${inputVideo}" -c copy -an "${originalClip}"`,
+        `ffmpeg -y -ss ${startTime} -i "${videoUrl}" -t 2 -c copy -avoid_negative_ts make_zero -fflags +genpts -seekable 1 "${originalClip}"`,
         { stdio: 'pipe' }
     );
     
+    // الحصول على دقة الفيديو الأصلي
+    const { width, height } = getVideoResolution(originalClip);
+    console.log(`      📐 دقة الفيديو: ${width}x${height}`);
+    
     // تطبيق التأثيرات حسب القالب
     const effectFiles = [];
-    let currentTime = 0;
     
     for (let i = 0; i < template.effects.length; i++) {
         const effect = template.effects[i];
         const effectOutput = `temp/scene_${sceneIndex}_effect_${i}.mp4`;
         
         let filter = '';
-        let inputFile = i === 0 ? originalClip : effectFiles[i-1];
         
+        // معالجة نوع التأثير مع مراعاة دقة الفيديو
         switch(effect.type) {
             case 'zoom':
-                filter = `zoompan=z='min(zoom+0.01,${effect.value})':d=${effect.duration * 30}:fps=30`;
+                filter = `zoompan=z='min(zoom+0.01,${effect.value})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
             case 'freeze':
-                // تجميد آخر فريم
                 filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB`;
                 break;
             case 'freeze_zoom':
-                filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB,zoompan=z='min(zoom+0.005,${effect.zoom})':d=${effect.duration * 30}:fps=30`;
+                filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB,zoompan=z='min(zoom+0.005,${effect.zoom})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
             case 'brightness':
                 filter = `eq=brightness=${effect.value}`;
                 break;
             case 'crop':
-                filter = `crop=${effect.value}:in_h`;
+                // قص بنسبة مئوية من العرض
+                const cropWidth = Math.floor(width * parseFloat(effect.value));
+                filter = `crop=${cropWidth}:${height}`;
                 break;
             case 'crop_vertical':
-                filter = `crop=${effect.value}`;
+                // قص بنسبة مئوية من الارتفاع
+                const cropHeight = Math.floor(height * parseFloat(effect.value));
+                filter = `crop=${width}:${cropHeight}`;
                 break;
             case 'mirror':
                 filter = `hflip`;
@@ -194,10 +211,9 @@ async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath
             case 'contrast':
                 filter = `eq=contrast=${effect.value}`;
                 break;
-            case 'color_shift':
-                filter = effect.value;
-                break;
+            case 'color':
             case 'color_temp':
+            case 'hue':
                 filter = effect.value;
                 break;
             case 'saturation':
@@ -207,9 +223,10 @@ async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath
                 filter = `reverse`;
                 break;
             case 'cut':
-                // قطع سريع (فريم أسود)
+                // قطع سريع (فريم أسود) - استخدام دقة الفيديو الأصلي
                 execSync(
-                    `ffmpeg -y -f lavfi -i color=c=black:s=1920x1080:d=${effect.duration} -c:v libx264 "${effectOutput}"`
+                    `ffmpeg -y -f lavfi -i color=c=black:s=${width}x${height}:d=${effect.duration} -c:v libx264 -preset fast "${effectOutput}"`,
+                    { stdio: 'pipe' }
                 );
                 effectFiles.push(effectOutput);
                 continue;
@@ -220,13 +237,24 @@ async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath
                 filter = 'null';
         }
         
+        // تحديد ملف الإدخال
+        const inputFile = i === 0 ? originalClip : effectFiles[i-1];
+        
         if (filter !== 'null' && filter !== '') {
-            execSync(
-                `ffmpeg -y -i "${inputFile}" -vf "${filter}" -c:v libx264 -preset fast -t ${effect.duration} "${effectOutput}"`,
-                { stdio: 'pipe' }
-            );
+            try {
+                execSync(
+                    `ffmpeg -y -i "${inputFile}" -vf "${filter}" -c:v libx264 -preset fast -t ${effect.duration} "${effectOutput}"`,
+                    { stdio: 'pipe' }
+                );
+            } catch (error) {
+                console.log(`      ⚠️ فشل التأثير ${effect.type}، استخدام النسخة الأصلية`);
+                // إذا فشل التأثير، استخدم المقطع الأصلي
+                execSync(
+                    `ffmpeg -y -i "${inputFile}" -c copy -t ${effect.duration} "${effectOutput}"`,
+                    { stdio: 'pipe' }
+                );
+            }
         } else if (filter === 'null') {
-            // نسخ عادي
             execSync(
                 `ffmpeg -y -i "${inputFile}" -c copy -t ${effect.duration} "${effectOutput}"`,
                 { stdio: 'pipe' }
@@ -234,7 +262,6 @@ async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath
         }
         
         effectFiles.push(effectOutput);
-        currentTime += effect.duration;
     }
     
     // دمج جميع التأثيرات للمشهد الواحد
@@ -257,28 +284,53 @@ async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath
     return outputPath;
 }
 
-// دمج الفيديو مع الصوت
-function mergeWithAudio(videoPath, audioPath, outputPath) {
+// دمج الفيديو مع الصوت مع تعديل السرعة
+function mergeWithAudio(videoPath, audioPath, outputPath, targetDuration) {
     console.log("🎵 دمج الفيديو مع الصوت...");
     
-    // الحصول على مدة الصوت
-    const audioDuration = getAudioDuration(audioPath);
+    // الحصول على مدة الفيديو الحالية
+    const videoDuration = parseFloat(execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`
+    ).toString());
     
-    // تعديل سرعة الفيديو ليتناسب مع مدة الصوت
-    execSync(
-        `ffmpeg -y -i "${videoPath}" -i "${audioPath}" ` +
-        `-c:v libx264 -c:a aac -map 0:v:0 -map 1:a:0 -shortest -preset fast "${outputPath}"`,
-        { stdio: 'pipe' }
-    );
+    // حساب عامل السرعة
+    const speedFactor = videoDuration / targetDuration;
+    
+    if (Math.abs(speedFactor - 1) > 0.05) { // إذا كان الفرق أكبر من 5%
+        console.log(`      ⚡ تعديل سرعة الفيديو بعامل ${speedFactor.toFixed(2)}`);
+        
+        const tempVideo = `temp/temp_speed.mp4`;
+        
+        // تعديل سرعة الفيديو
+        execSync(
+            `ffmpeg -y -i "${videoPath}" -filter:v "setpts=${speedFactor}*PTS" -an "${tempVideo}"`,
+            { stdio: 'pipe' }
+        );
+        
+        // دمج مع الصوت
+        execSync(
+            `ffmpeg -y -i "${tempVideo}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`,
+            { stdio: 'pipe' }
+        );
+        
+        try { fs.unlinkSync(tempVideo); } catch (e) {}
+    } else {
+        // دمج مباشر بدون تعديل سرعة
+        execSync(
+            `ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`,
+            { stdio: 'pipe' }
+        );
+    }
     
     return outputPath;
 }
 
-// المعالجة المباشرة من الرابط (بدون تحميل)
+// المعالجة المباشرة من الرابط
 async function processDirectFromUrl(videoUrl, scenes, audioPath, outputPath) {
     console.log("🎬 بدء المعالجة المباشرة من الرابط...");
     
     const sceneVideos = [];
+    const totalVideoDuration = scenes.length * 7.5; // 7.5 ثانية لكل مشهد
     
     for (let i = 0; i < scenes.length; i++) {
         const scene = scenes[i];
@@ -288,7 +340,7 @@ async function processDirectFromUrl(videoUrl, scenes, audioPath, outputPath) {
         
         const finalScenePath = `temp/scene_${i}_final.mp4`;
         
-        // تطبيق قالب عشوائي مباشرة من الرابط
+        // تطبيق قالب عشوائي
         await applyRandomTemplate(videoUrl, scene.start, i, finalScenePath);
         
         sceneVideos.push(finalScenePath);
@@ -307,8 +359,9 @@ async function processDirectFromUrl(videoUrl, scenes, audioPath, outputPath) {
         { stdio: 'pipe' }
     );
     
-    // دمج مع الصوت
-    const finalVideo = mergeWithAudio(concatedVideo, audioPath, outputPath);
+    // دمج مع الصوت مع تعديل السرعة
+    const audioDuration = getAudioDuration(audioPath);
+    const finalVideo = mergeWithAudio(concatedVideo, audioPath, outputPath, audioDuration);
     
     // تنظيف
     sceneVideos.forEach(f => {
@@ -352,14 +405,13 @@ async function main() {
     console.log(`✅ تم العثور على ${scenes.length} مشهد`);
     
     // حساب المدة المطلوبة للفيديو
-    const videoDuration = scenes.length * 7.5; // 7.5 ثانية لكل مشهد
+    const videoDuration = scenes.length * 7.5;
     console.log(`⏱️ المدة المتوقعة للفيديو: ${videoDuration.toFixed(1)} ثانية`);
     
     // التحقق من مدة الصوت
     const audioDuration = getAudioDuration(audioFile);
     console.log(`🎵 مدة ملف الصوت: ${audioDuration.toFixed(1)} ثانية`);
     
-    // التأكد من تطابق المدة
     if (Math.abs(videoDuration - audioDuration) > 1) {
         console.log(`⚠️ تحذير: مدة الفيديو (${videoDuration.toFixed(1)}ث) تختلف عن مدة الصوت (${audioDuration.toFixed(1)}ث)`);
         console.log("⚡ سيتم تعديل سرعة الفيديو تلقائياً لتناسب الصوت");
@@ -377,7 +429,7 @@ async function main() {
     console.log(`   📁 المسار: ${finalVideo}`);
     console.log(`   📦 الحجم: ${(stats.size / (1024*1024)).toFixed(2)} MB`);
     console.log(`   🎬 عدد المشاهد: ${scenes.length}`);
-    console.log(`   🎵 متوافق مع: Sund.mp3`);
+    console.log(`   🎵 متوافق مع: ${audioFile}`);
     
     // تنظيف الملفات المؤقتة
     console.log("\n🧹 تنظيف الملفات المؤقتة...");
@@ -409,6 +461,7 @@ module.exports = {
     parseScriptFile,
     timeToSeconds,
     getAudioDuration,
+    getVideoResolution,
     applyRandomTemplate,
     mergeWithAudio,
     processDirectFromUrl,
