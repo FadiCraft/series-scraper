@@ -1,8 +1,8 @@
-const { execSync } = require("child_process");
+const { execSync, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-const youtubedl = require('youtube-dl-exec');
+const crypto = require("crypto");
 
 // التأكد من وجود المجلدات
 ['output', 'temp', 'downloads'].forEach(dir => {
@@ -11,399 +11,406 @@ const youtubedl = require('youtube-dl-exec');
   }
 });
 
-// تحميل الفيديو من رابط مباشر
-async function downloadFromUrl(url, outputPath) {
-  console.log(`📥 تحميل الفيديو من: ${url}`);
-  
-  try {
-    if (url.includes('youtube.com') || url.includes('youtu.be') || 
-        url.includes('facebook.com') || url.includes('twitter.com') || 
-        url.includes('tiktok.com') || url.includes('instagram.com')) {
-      
-      console.log("🔄 استخدام youtube-dl لتحميل من المنصة...");
-      await youtubedl(url, {
-        output: outputPath,
-        format: 'mp4',
-        noCheckCertificate: true
-      });
-      
-    } else {
-      console.log("🔄 تحميل من رابط مباشر...");
-      const response = await axios({
-        method: 'GET',
-        url: url,
-        responseType: 'stream',
-        timeout: 300000,
-        maxContentLength: Infinity,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-      
-      const writer = fs.createWriteStream(outputPath);
-      response.data.pipe(writer);
-      
-      await new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
-      });
-    }
-    
-    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-      console.log(`✅ تم التحميل بنجاح: ${outputPath}`);
-      return outputPath;
-    } else {
-      throw new Error("الملف فارغ أو لم يتم تحميله");
-    }
-    
-  } catch (error) {
-    console.error("❌ خطأ في التحميل:", error.message);
-    
-    try {
-      console.log("🔄 محاولة بديلة باستخدام FFmpeg...");
-      execSync(`ffmpeg -y -i "${url}" -c copy ${outputPath}`, { 
-        stdio: 'inherit',
-        timeout: 300000 
-      });
-      return outputPath;
-    } catch (ffmpegError) {
-      throw new Error(`فشل تحميل الفيديو: ${error.message}`);
-    }
-  }
-}
-
-// قراءة ملف النص (للمشاهد فقط، تم إزالة الصوت)
-function parseScriptFile(scriptPath) {
-  const content = fs.readFileSync(scriptPath, "utf8");
-  const lines = content.split("\n").filter(line => line.trim() !== "");
-  
-  const scenes = [];
-  
-  for (const line of lines) {
-    const match = line.match(/(\d+:\d+)-(\d+:\d+)\s*\|\s*(.+)/);
-    
-    if (match) {
-      const startTime = timeToSeconds(match[1]);
-      const endTime = timeToSeconds(match[2]);
-      const description = match[3]; // وصف المشهد (قد يُستخدم لاحقاً)
-      
-      scenes.push({
-        start: startTime,
-        end: endTime,
-        duration: endTime - startTime,
-        text: description
-      });
-    }
-  }
-  
-  return scenes;
-}
+// ========== قوالب التأثيرات العشرة ==========
+const templates = [
+    // قالب 1
+    { name: "قالب 1", effects: [
+        { type: "zoom", value: "1.2", duration: 1.0 },
+        { type: "freeze", duration: 1.5 },
+        { type: "clip", duration: 2.0, filter: "colorbalance=rs=0.1:gs=-0.1:bs=-0.1" },
+        { type: "normal", duration: 2.5 }
+    ]},
+    // قالب 2
+    { name: "قالب 2", effects: [
+        { type: "brightness", value: "0.1", duration: 1.5 },
+        { type: "freeze_zoom", duration: 2.0, zoom: "1.3" },
+        { type: "crop", value: "100:1080", duration: 2.5 },
+        { type: "normal", duration: 1.5 }
+    ]},
+    // قالب 3
+    { name: "قالب 3", effects: [
+        { type: "mirror", duration: 1.5 },
+        { type: "slow", speed: "0.7", duration: 2.0 },
+        { type: "cut", duration: 0.5 },
+        { type: "zoom", value: "1.4", duration: 2.5 }
+    ]},
+    // قالب 4
+    { name: "قالب 4", effects: [
+        { type: "slow", speed: "0.6", duration: 2.0 },
+        { type: "contrast", value: "1.3", duration: 1.5 },
+        { type: "freeze", duration: 1.5 },
+        { type: "normal", duration: 2.0 }
+    ]},
+    // قالب 5
+    { name: "قالب 5", effects: [
+        { type: "zoom", value: "1.15", duration: 1.5 },
+        { type: "cut", duration: 0.3 },
+        { type: "color_shift", value: "hue=h=10:s=1.2", duration: 2.5 },
+        { type: "normal", duration: 2.0 }
+    ]},
+    // قالب 6
+    { name: "قالب 6", effects: [
+        { type: "crop_vertical", value: "800:1080", duration: 1.5 },
+        { type: "slow", speed: "0.5", duration: 2.0 },
+        { type: "freeze", duration: 1.5 },
+        { type: "normal", duration: 2.0 }
+    ]},
+    // قالب 7
+    { name: "قالب 7", effects: [
+        { type: "color_temp", value: "colorbalance=rs=0.2:bs=-0.1", duration: 1.5 },
+        { type: "mirror", duration: 1.5 },
+        { type: "cut", duration: 0.4 },
+        { type: "zoom", value: "1.25", duration: 2.5 }
+    ]},
+    // قالب 8
+    { name: "قالب 8", effects: [
+        { type: "reverse", duration: 2.0 },
+        { type: "zoom", value: "1.1", duration: 1.5 },
+        { type: "freeze", duration: 1.5 },
+        { type: "normal", duration: 2.0 }
+    ]},
+    // قالب 9
+    { name: "قالب 9", effects: [
+        { type: "saturation", value: "0.7", duration: 1.5 },
+        { type: "freeze", duration: 1.5 },
+        { type: "slow", speed: "0.8", duration: 2.0 },
+        { type: "normal", duration: 2.0 }
+    ]},
+    // قالب 10
+    { name: "قالب 10", effects: [
+        { type: "zoom", value: "1.2", duration: 1.5 },
+        { type: "slow", speed: "0.6", duration: 2.0 },
+        { type: "cut", duration: 0.3 },
+        { type: "normal", duration: 2.5 }
+    ]}
+];
 
 // تحويل الوقت من صيغة دقائق:ثواني إلى ثواني
 function timeToSeconds(timeStr) {
-  const parts = timeStr.split(":");
-  if (parts.length === 2) {
-    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-  }
-  return parseInt(timeStr);
+    const parts = timeStr.split(":");
+    if (parts.length === 2) {
+        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+    return parseInt(timeStr);
 }
 
-// ========== تم إزالة دالة توليد الصوت بالكامل ==========
-
-// ========== تطبيق الاستراتيجيات البصرية (المونتاج التحويلي) ==========
-function applyVisualTransformations(inputVideo, start, duration, sceneIndex, outputPath) {
-  console.log(`🎬 تطبيق مؤثرات بصرية على المشهد ${sceneIndex}...`);
-
-  // 1. قاعدة الـ 3 ثوانٍ المتقطعة: سنقسم كل مشهد إلى مقاطع قصيرة (2-3 ثوانٍ)
-  // 2. التلاعب بالإطار (Reframing): Zoom In/Out عشوائي
-  // 3. تراكب العناصر (Overlays): إضافة نص توضيحي (مثل "المشهد الرئيسي")
-  // 4. تغيير الألوان: تعديل بسيط في درجة السطوع والتباين
-
-  // فكرة العمل: بدلاً من قص مشهد واحد طويل، نقوم بقصه إلى عدة مقاطع صغيرة جداً
-  // ونطبق على كل مقطع تأثيرات مختلفة.
-  
-  // سنقوم بتقسيم المشهد إلى 3-5 مقاطع صغيرة (2-4 ثوانٍ لكل منها)
-  const subClipCount = Math.min(5, Math.max(3, Math.floor(duration / 3))); // بين 3 و 5 مقاطع
-  const subClipDuration = duration / subClipCount;
-  
-  const tempFiles = [];
-  
-  for (let i = 0; i < subClipCount; i++) {
-    const subStart = start + (i * subClipDuration);
-    const subDur = subClipDuration;
-    const tempClip = `temp/scene_${sceneIndex}_part_${i}.mp4`;
+// قراءة ملف النص
+function parseScriptFile(scriptPath) {
+    const content = fs.readFileSync(scriptPath, "utf8");
+    const lines = content.split("\n").filter(line => line.trim() !== "");
     
-    // قص المقطع الصغير
+    const scenes = [];
+    
+    for (const line of lines) {
+        const match = line.match(/(\d+:\d+)-(\d+:\d+)\s*\|\s*(.+)/);
+        
+        if (match) {
+            const startTime = timeToSeconds(match[1]);
+            const endTime = timeToSeconds(match[2]);
+            
+            scenes.push({
+                start: startTime,
+                end: endTime,
+                duration: endTime - startTime,
+                text: match[3]
+            });
+        }
+    }
+    
+    return scenes;
+}
+
+// الحصول على مدة ملف الصوت
+function getAudioDuration(audioPath) {
+    try {
+        const output = execSync(
+            `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
+        ).toString();
+        return parseFloat(output);
+    } catch (error) {
+        console.error("❌ خطأ في قراءة مدة الصوت:", error.message);
+        return 0;
+    }
+}
+
+// حساب المدة الإجمالية للمشاهد (كل مشهد 7.5 ثانية)
+function calculateTotalVideoDuration(scenesCount) {
+    return scenesCount * 7.5; // 7.5 ثانية لكل مشهد
+}
+
+// تطبيق قالب عشوائي على مقطع
+async function applyRandomTemplate(inputVideo, startTime, sceneIndex, outputPath) {
+    console.log(`   🎨 تطبيق قالب عشوائي على المشهد ${sceneIndex + 1}`);
+    
+    // اختيار قالب عشوائي
+    const randomIndex = Math.floor(Math.random() * templates.length);
+    const template = templates[randomIndex];
+    console.log(`      📋 القالب المختار: ${template.name}`);
+    
+    // قص المقطع الأصلي (2 ثانية)
+    const originalClip = `temp/scene_${sceneIndex}_original.mp4`;
     execSync(
-      `ffmpeg -y -ss ${subStart} -t ${subDur} -i "${inputVideo}" ` +
-      `-c copy -an ${tempClip}` // -an لإزالة الصوت الأصلي
+        `ffmpeg -y -ss ${startTime} -t 2 -i "${inputVideo}" -c copy -an "${originalClip}"`,
+        { stdio: 'pipe' }
     );
     
-    // تطبيق تأثيرات بصرية مختلفة على كل مقطع
-    const transformedClip = `temp/scene_${sceneIndex}_part_${i}_transformed.mp4`;
+    // تطبيق التأثيرات حسب القالب
+    const effectFiles = [];
+    let currentTime = 0;
     
-    // نختار تأثيراً عشوائياً لكل مقطع
-    const effectType = i % 3; // 0,1,2 لتوزيع التأثيرات
-    
-    let filterComplex = '';
-    
-    if (effectType === 0) {
-      // تأثير Zoom In بسيط
-      filterComplex = '[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,zoompan=z=\'min(zoom+0.0015,1.2)\':d=125:fps=30[out]';
-    } else if (effectType === 1) {
-      // تأثير قص الأطراف + تغيير السطوع
-      filterComplex = '[0:v]crop=iw-100:ih-100:50:50,scale=1920:1080,eq=brightness=0.05:contrast=1.1[out]';
-    } else {
-      // تأثير عكس الصورة (Mirroring) أفقي مع تراكب نص
-      filterComplex = '[0:v]hflip,drawtext=fontfile=/path/to/arial.ttf:text=\'مشهد حصري\':fontcolor=white:fontsize=24:x=10:y=10,eq=saturation=1.2[out]';
-    }
-    
-    try {
-      execSync(
-        `ffmpeg -y -i "${tempClip}" -filter_complex "${filterComplex}" -map "[out]" -c:v libx264 -preset fast ${transformedClip}`,
-        { stdio: 'pipe' }
-      );
-    } catch (filterError) {
-      // إذا فشل التأثير المعقد، نستخدم تأثيراً بسيطاً
-      console.log(`⚠️ فشل التأثير المتقدم، استخدام تأثير بسيط للمقطع ${i}`);
-      execSync(
-        `ffmpeg -y -i "${tempClip}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30" -c:v libx264 -preset fast ${transformedClip}`
-      );
-    }
-    
-    tempFiles.push(transformedClip);
-  }
-  
-  // دمج المقاطع الصغيرة بعد تطبيق التأثيرات
-  const listFile = `temp/scene_${sceneIndex}_list.txt`;
-  const content = tempFiles.map(f => `file '${path.resolve(f)}'`).join("\n");
-  fs.writeFileSync(listFile, content);
-  
-  execSync(
-    `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${outputPath}"`
-  );
-  
-  // تنظيف الملفات المؤقتة لهذا المشهد
-  tempFiles.forEach(f => {
-    try { fs.unlinkSync(f); } catch (e) {}
-  });
-  try { fs.unlinkSync(listFile); } catch (e) {}
-  
-  return outputPath;
-}
-
-// دالة جديدة لإضافة موسيقى خلفية هادئة
-function addBackgroundMusic(videoPath, outputPath) {
-  console.log("🎵 إضافة موسيقى خلفية...");
-  
-  // التحقق من وجود ملف الموسيقى
-  const musicPath = 'background_music.mp3';
-  
-  if (!fs.existsSync(musicPath)) {
-    console.log("⚠️ لم يتم العثور على ملف موسيقى، تخطي الخطوة...");
-    // نسخ الفيديو بدون موسيقى
-    execSync(`ffmpeg -y -i "${videoPath}" -c copy "${outputPath}"`);
-    return outputPath;
-  }
-  
-  // الحصول على مدة الفيديو
-  const durationOutput = execSync(
-    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`
-  ).toString();
-  const videoDuration = parseFloat(durationOutput);
-  
-  // إضافة الموسيقى مع خفض صوتها وحلقة إذا كانت أقصر من الفيديو
-  execSync(
-    `ffmpeg -y -i "${videoPath}" -i "${musicPath}" ` +
-    `-filter_complex "[1:a]aloop=loop=-1:size=2e+09,atrim=duration=${videoDuration},volume=0.3[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=3[a]" ` +
-    `-map 0:v -map "[a]" -c:v copy -c:a aac -shortest "${outputPath}"`,
-    { stdio: 'pipe' }
-  );
-  
-  return outputPath;
-}
-
-// دمج جميع المقاطع (مع تعديل بسيط)
-function concatVideos(videoList, outputPath) {
-  console.log("🔗 دمج جميع المشاهد...");
-  
-  const listFile = "temp/concat_list.txt";
-  const content = videoList.map(v => `file '${path.resolve(v)}'`).join("\n");
-  fs.writeFileSync(listFile, content);
-  
-  // دمج الفيديو بدون صوت (لأنه تمت إزالة الصوت من جميع المقاطع)
-  execSync(
-    `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy -an "${outputPath}"` // -an لإزالة أي أثر للصوت
-  );
-  
-  return outputPath;
-}
-
-// الحصول على معلومات الفيديو
-function getVideoInfo(videoPath) {
-  try {
-    const output = execSync(
-      `ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 "${videoPath}"`
-    ).toString();
-    
-    const lines = output.split('\n');
-    const info = {};
-    lines.forEach(line => {
-      const [key, value] = line.split('=');
-      if (key && value) info[key] = value;
-    });
-    
-    return {
-      duration: parseFloat(info.duration) || 0,
-      size: parseInt(info.size) || 0
-    };
-  } catch (error) {
-    return { duration: 0, size: 0 };
-  }
-}
-
-// تنظيف الملفات المؤقتة
-function cleanup() {
-  console.log("🧹 تنظيف الملفات المؤقتة...");
-  
-  try {
-    const tempDir = 'temp';
-    if (fs.existsSync(tempDir)) {
-      const files = fs.readdirSync(tempDir);
-      files.forEach(file => {
-        if (file.endsWith('.mp4') || file.endsWith('.txt') || file.endsWith('.mp3')) {
-          try { fs.unlinkSync(path.join(tempDir, file)); } catch (e) {}
+    for (let i = 0; i < template.effects.length; i++) {
+        const effect = template.effects[i];
+        const effectOutput = `temp/scene_${sceneIndex}_effect_${i}.mp4`;
+        
+        let filter = '';
+        let inputFile = i === 0 ? originalClip : effectFiles[i-1];
+        
+        switch(effect.type) {
+            case 'zoom':
+                filter = `zoompan=z='min(zoom+0.01,${effect.value})':d=${effect.duration * 30}:fps=30`;
+                break;
+            case 'freeze':
+                // تجميد آخر فريم
+                filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB`;
+                break;
+            case 'freeze_zoom':
+                filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB,zoompan=z='min(zoom+0.005,${effect.zoom})':d=${effect.duration * 30}:fps=30`;
+                break;
+            case 'brightness':
+                filter = `eq=brightness=${effect.value}`;
+                break;
+            case 'crop':
+                filter = `crop=${effect.value}:in_h`;
+                break;
+            case 'crop_vertical':
+                filter = `crop=${effect.value}`;
+                break;
+            case 'mirror':
+                filter = `hflip`;
+                break;
+            case 'slow':
+                filter = `setpts=${effect.speed}*PTS`;
+                break;
+            case 'contrast':
+                filter = `eq=contrast=${effect.value}`;
+                break;
+            case 'color_shift':
+                filter = effect.value;
+                break;
+            case 'color_temp':
+                filter = effect.value;
+                break;
+            case 'saturation':
+                filter = `eq=saturation=${effect.value}`;
+                break;
+            case 'reverse':
+                filter = `reverse`;
+                break;
+            case 'cut':
+                // قطع سريع (فريم أسود)
+                execSync(
+                    `ffmpeg -y -f lavfi -i color=c=black:s=1920x1080:d=${effect.duration} -c:v libx264 "${effectOutput}"`
+                );
+                effectFiles.push(effectOutput);
+                continue;
+            case 'normal':
+                filter = 'null';
+                break;
+            default:
+                filter = 'null';
         }
-      });
+        
+        if (filter !== 'null' && filter !== '') {
+            execSync(
+                `ffmpeg -y -i "${inputFile}" -vf "${filter}" -c:v libx264 -preset fast -t ${effect.duration} "${effectOutput}"`,
+                { stdio: 'pipe' }
+            );
+        } else if (filter === 'null') {
+            // نسخ عادي
+            execSync(
+                `ffmpeg -y -i "${inputFile}" -c copy -t ${effect.duration} "${effectOutput}"`,
+                { stdio: 'pipe' }
+            );
+        }
+        
+        effectFiles.push(effectOutput);
+        currentTime += effect.duration;
     }
-  } catch (error) {
-    console.log("⚠️ خطأ في تنظيف الملفات المؤقتة:", error.message);
-  }
+    
+    // دمج جميع التأثيرات للمشهد الواحد
+    const listFile = `temp/scene_${sceneIndex}_list.txt`;
+    const content = effectFiles.map(f => `file '${path.resolve(f)}'`).join("\n");
+    fs.writeFileSync(listFile, content);
+    
+    execSync(
+        `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${outputPath}"`,
+        { stdio: 'pipe' }
+    );
+    
+    // تنظيف الملفات المؤقتة للمشهد
+    effectFiles.forEach(f => {
+        try { fs.unlinkSync(f); } catch (e) {}
+    });
+    try { fs.unlinkSync(listFile); } catch (e) {}
+    try { fs.unlinkSync(originalClip); } catch (e) {}
+    
+    return outputPath;
 }
 
-// ============= الوظيفة الرئيسية المعدلة بالكامل =============
+// دمج الفيديو مع الصوت
+function mergeWithAudio(videoPath, audioPath, outputPath) {
+    console.log("🎵 دمج الفيديو مع الصوت...");
+    
+    // الحصول على مدة الصوت
+    const audioDuration = getAudioDuration(audioPath);
+    
+    // تعديل سرعة الفيديو ليتناسب مع مدة الصوت
+    execSync(
+        `ffmpeg -y -i "${videoPath}" -i "${audioPath}" ` +
+        `-c:v libx264 -c:a aac -map 0:v:0 -map 1:a:0 -shortest -preset fast "${outputPath}"`,
+        { stdio: 'pipe' }
+    );
+    
+    return outputPath;
+}
+
+// المعالجة المباشرة من الرابط (بدون تحميل)
+async function processDirectFromUrl(videoUrl, scenes, audioPath, outputPath) {
+    console.log("🎬 بدء المعالجة المباشرة من الرابط...");
+    
+    const sceneVideos = [];
+    
+    for (let i = 0; i < scenes.length; i++) {
+        const scene = scenes[i];
+        console.log(`\n🎬 معالجة المشهد ${i + 1}/${scenes.length}`);
+        console.log(`   ⏱️  ${Math.floor(scene.start/60)}:${Math.floor(scene.start%60).toString().padStart(2,'0')}`);
+        console.log(`   📝 ${scene.text.substring(0, 50)}...`);
+        
+        const finalScenePath = `temp/scene_${i}_final.mp4`;
+        
+        // تطبيق قالب عشوائي مباشرة من الرابط
+        await applyRandomTemplate(videoUrl, scene.start, i, finalScenePath);
+        
+        sceneVideos.push(finalScenePath);
+    }
+    
+    // دمج جميع المشاهد
+    console.log("\n🔗 دمج جميع المشاهد...");
+    const concatedVideo = `temp/concated_video.mp4`;
+    
+    const listFile = "temp/final_concat_list.txt";
+    const content = sceneVideos.map(v => `file '${path.resolve(v)}'`).join("\n");
+    fs.writeFileSync(listFile, content);
+    
+    execSync(
+        `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${concatedVideo}"`,
+        { stdio: 'pipe' }
+    );
+    
+    // دمج مع الصوت
+    const finalVideo = mergeWithAudio(concatedVideo, audioPath, outputPath);
+    
+    // تنظيف
+    sceneVideos.forEach(f => {
+        try { fs.unlinkSync(f); } catch (e) {}
+    });
+    try { fs.unlinkSync(concatedVideo); } catch (e) {}
+    try { fs.unlinkSync(listFile); } catch (e) {}
+    
+    return finalVideo;
+}
+
+// ============= الوظيفة الرئيسية =============
 async function main() {
-  console.log("🚀 بدء مشروع ملخص الأفلام التلقائي (بدون صوت)");
-  console.log("=".repeat(50));
-  
-  const videoSource = process.argv[2];
-  const scriptFile = process.argv[3] || "script.txt";
-  
-  if (!videoSource) {
-    console.error("❌ الرجاء تحديد مصدر الفيديو (رابط أو مسار ملف)");
-    console.log("📌 مثال: node Molahas.js https://example.com/video.mp4 script.txt");
-    console.log("📌 مثال: node Molahas.js movie.mp4 script.txt");
-    process.exit(1);
-  }
-  
-  if (!fs.existsSync(scriptFile)) {
-    console.error(`❌ ملف النص ${scriptFile} غير موجود`);
-    console.log("📝 مثال لمحتوى الملف:");
-    console.log("00:00-01:30 | مشهد البطل في الغابة");
-    console.log("01:30-03:00 | الهجوم على القرية");
-    process.exit(1);
-  }
-  
-  let videoPath;
-  let isUrl = videoSource.startsWith('http://') || videoSource.startsWith('https://');
-  
-  if (isUrl) {
-    console.log(`🌐 المصدر: رابط (${videoSource.substring(0, 100)}...)`);
-    videoPath = "downloads/downloaded_video.mp4";
+    console.log("🚀 بدء مشروع ملخص الأفلام التلقائي (بدون تحميل)");
+    console.log("=".repeat(50));
     
+    const videoUrl = process.argv[2];
+    const scriptFile = process.argv[3] || "script.txt";
+    const audioFile = process.argv[4] || "Sund.mp3";
+    
+    if (!videoUrl) {
+        console.error("❌ الرجاء تحديد رابط الفيديو");
+        console.log("📌 مثال: node processor.js https://example.com/video.mp4 script.txt Sund.mp3");
+        process.exit(1);
+    }
+    
+    if (!fs.existsSync(scriptFile)) {
+        console.error(`❌ ملف النص ${scriptFile} غير موجود`);
+        process.exit(1);
+    }
+    
+    if (!fs.existsSync(audioFile)) {
+        console.error(`❌ ملف الصوت ${audioFile} غير موجود`);
+        console.log("📌 تأكد من وجود ملف Sund.mp3 في المجلد");
+        process.exit(1);
+    }
+    
+    // قراءة المشاهد
+    console.log(`📄 قراءة ملف النص: ${scriptFile}`);
+    const scenes = parseScriptFile(scriptFile);
+    console.log(`✅ تم العثور على ${scenes.length} مشهد`);
+    
+    // حساب المدة المطلوبة للفيديو
+    const videoDuration = scenes.length * 7.5; // 7.5 ثانية لكل مشهد
+    console.log(`⏱️ المدة المتوقعة للفيديو: ${videoDuration.toFixed(1)} ثانية`);
+    
+    // التحقق من مدة الصوت
+    const audioDuration = getAudioDuration(audioFile);
+    console.log(`🎵 مدة ملف الصوت: ${audioDuration.toFixed(1)} ثانية`);
+    
+    // التأكد من تطابق المدة
+    if (Math.abs(videoDuration - audioDuration) > 1) {
+        console.log(`⚠️ تحذير: مدة الفيديو (${videoDuration.toFixed(1)}ث) تختلف عن مدة الصوت (${audioDuration.toFixed(1)}ث)`);
+        console.log("⚡ سيتم تعديل سرعة الفيديو تلقائياً لتناسب الصوت");
+    }
+    
+    // معالجة الفيديو مباشرة من الرابط
+    const timestamp = new Date().getTime();
+    const finalVideo = `output/final_summary_${timestamp}.mp4`;
+    
+    await processDirectFromUrl(videoUrl, scenes, audioFile, finalVideo);
+    
+    // عرض النتيجة
+    const stats = fs.statSync(finalVideo);
+    console.log(`\n✅ تم إنشاء الفيديو النهائي:`);
+    console.log(`   📁 المسار: ${finalVideo}`);
+    console.log(`   📦 الحجم: ${(stats.size / (1024*1024)).toFixed(2)} MB`);
+    console.log(`   🎬 عدد المشاهد: ${scenes.length}`);
+    console.log(`   🎵 متوافق مع: Sund.mp3`);
+    
+    // تنظيف الملفات المؤقتة
+    console.log("\n🧹 تنظيف الملفات المؤقتة...");
     try {
-      await downloadFromUrl(videoSource, videoPath);
+        const tempDir = 'temp';
+        if (fs.existsSync(tempDir)) {
+            const files = fs.readdirSync(tempDir);
+            files.forEach(file => {
+                if (file.endsWith('.mp4') || file.endsWith('.txt')) {
+                    try { fs.unlinkSync(path.join(tempDir, file)); } catch (e) {}
+                }
+            });
+        }
     } catch (error) {
-      console.error("❌ فشل تحميل الفيديو:", error.message);
-      process.exit(1);
+        console.log("⚠️ خطأ في التنظيف:", error.message);
     }
-  } else {
-    console.log(`📁 المصدر: ملف محلي (${videoSource})`);
-    if (!fs.existsSync(videoSource)) {
-      console.error(`❌ الملف ${videoSource} غير موجود`);
-      process.exit(1);
-    }
-    videoPath = videoSource;
-  }
-  
-  const videoInfo = getVideoInfo(videoPath);
-  const durationMinutes = Math.floor(videoInfo.duration / 60);
-  const durationSeconds = Math.floor(videoInfo.duration % 60);
-  console.log(`📊 معلومات الفيديو:`);
-  console.log(`   - المدة: ${durationMinutes}:${durationSeconds.toString().padStart(2, '0')}`);
-  console.log(`   - الحجم: ${(videoInfo.size / (1024*1024)).toFixed(2)} MB`);
-  
-  console.log(`\n📄 قراءة ملف النص: ${scriptFile}`);
-  const scenes = parseScriptFile(scriptFile);
-  console.log(`✅ تم العثور على ${scenes.length} مشهد`);
-  
-  const validScenes = scenes.filter(scene => scene.end <= videoInfo.duration);
-  if (validScenes.length < scenes.length) {
-    console.log(`⚠️ تم تجاهل ${scenes.length - validScenes.length} مشهد يتجاوز مدة الفيديو`);
-  }
-  
-  if (validScenes.length === 0) {
-    console.error("❌ لا يوجد مشاهد صالحة في ملف النص");
-    process.exit(1);
-  }
-  
-  const sceneVideos = [];
-  
-  for (let i = 0; i < validScenes.length; i++) {
-    const scene = validScenes[i];
-    console.log(`\n🎬 معالجة المشهد ${i + 1}/${validScenes.length}`);
-    console.log(`   ⏱️  ${Math.floor(scene.start/60)}:${Math.floor(scene.start%60).toString().padStart(2,'0')} - ${Math.floor(scene.end/60)}:${Math.floor(scene.end%60).toString().padStart(2,'0')}`);
-    console.log(`   📝 ${scene.text.substring(0, 100)}${scene.text.length > 100 ? '...' : ''}`);
     
-    // ===== الخطوات المعدلة: بدون صوت، فقط مؤثرات بصرية =====
-    const finalScenePath = `temp/scene_${i}_final.mp4`;
-    
-    // تطبيق التحويلات البصرية مباشرة
-    applyVisualTransformations(videoPath, scene.start, scene.duration, i, finalScenePath);
-    
-    sceneVideos.push(finalScenePath);
-  }
-  
-  console.log("\n🔗 دمج جميع المشاهد...");
-  const concatedVideo = `temp/concated_video.mp4`;
-  concatVideos(sceneVideos, concatedVideo);
-  
-  // إضافة موسيقى خلفية (اختياري)
-  console.log("\n🎵 إضافة موسيقى خلفية هادئة...");
-  const timestamp = new Date().getTime();
-  const finalVideoWithMusic = `output/final_summary_${timestamp}.mp4`;
-  addBackgroundMusic(concatedVideo, finalVideoWithMusic);
-  
-  const finalInfo = getVideoInfo(finalVideoWithMusic);
-  const finalMinutes = Math.floor(finalInfo.duration / 60);
-  const finalSeconds = Math.floor(finalInfo.duration % 60);
-  console.log(`\n✅ تم إنشاء الفيديو النهائي:`);
-  console.log(`   📁 المسار: ${finalVideoWithMusic}`);
-  console.log(`   ⏱️  المدة: ${finalMinutes}:${finalSeconds.toString().padStart(2, '0')}`);
-  console.log(`   📦 الحجم: ${(finalInfo.size / (1024*1024)).toFixed(2)} MB`);
-  console.log(`   🎬 عدد المشاهد: ${validScenes.length}`);
-  console.log(`   🔇 ملاحظة: الفيديو بدون تعليق صوتي (ممتثل للشرط الأول)`);
-  
-  cleanup();
-  
-  console.log("\n✨ انتهى العمل بنجاح!");
+    console.log("\n✨ انتهى العمل بنجاح!");
 }
 
 if (require.main === module) {
-  main().catch(error => {
-    console.error("❌ خطأ غير متوقع:", error);
-    process.exit(1);
-  });
+    main().catch(error => {
+        console.error("❌ خطأ غير متوقع:", error);
+        process.exit(1);
+    });
 }
 
 module.exports = {
-  downloadFromUrl,
-  parseScriptFile,
-  timeToSeconds,
-  applyVisualTransformations,
-  addBackgroundMusic,
-  concatVideos,
-  getVideoInfo,
-  cleanup,
-  main
+    parseScriptFile,
+    timeToSeconds,
+    getAudioDuration,
+    applyRandomTemplate,
+    mergeWithAudio,
+    processDirectFromUrl,
+    main
 };
