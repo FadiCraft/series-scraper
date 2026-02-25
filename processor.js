@@ -202,136 +202,145 @@ function parseScriptFile(scriptPath) {
     return scenes;
 }
 
+// دالة جديدة لتوليد مقطع أساسي بطول كافي للتأثيرات
+function generateBaseClip(videoPath, startTime, sceneIndex, totalDuration) {
+    console.log(`   🎞️ توليد مقطع أساسي بطول ${totalDuration} ثانية`);
+    
+    const baseClip = `temp/scene_${sceneIndex}_base.mp4`;
+    
+    // نقص مقطع أطول من الفيديو الأصلي (5 ثواني) عشان نضمن إطارات كافية للتأثيرات
+    execSync(
+        `ffmpeg -y -ss ${startTime} -i "${videoPath}" -t 5 -c copy -avoid_negative_ts make_zero "${baseClip}"`,
+        { stdio: 'pipe' }
+    );
+    
+    return baseClip;
+}
+
 // تطبيق قالب على مقطع (بدون عشوائية - نستخدم القوالب بالترتيب)
 async function applyTemplate(videoPath, startTime, sceneIndex, templateIndex, outputPath) {
     const template = templates[templateIndex % templates.length];
     console.log(`   🎨 تطبيق ${template.name} على المشهد ${sceneIndex + 1}`);
     
-    // قص المقطع الأصلي (2 ثانية) مع الحفاظ على الجودة
-    const originalClip = `temp/scene_${sceneIndex}_original.mp4`;
+    // حساب المدة الإجمالية للتأثيرات
+    const totalDuration = template.effects.reduce((sum, effect) => sum + effect.duration, 0);
     
-    execSync(
-        `ffmpeg -y -ss ${startTime} -i "${videoPath}" -t 2 -c copy -avoid_negative_ts make_zero "${originalClip}"`,
-        { stdio: 'pipe' }
-    );
+    // توليد مقطع أساسي بطول كافي
+    const baseClip = generateBaseClip(videoPath, startTime, sceneIndex, totalDuration);
     
     // الحصول على دقة الفيديو الأصلي
-    const { width, height } = getVideoResolution(originalClip);
+    const { width, height } = getVideoResolution(baseClip);
     
     // تطبيق التأثيرات حسب القالب
     const effectFiles = [];
+    let currentInput = baseClip;
     
     for (let i = 0; i < template.effects.length; i++) {
         const effect = template.effects[i];
         const effectOutput = `temp/scene_${sceneIndex}_effect_${i}.mp4`;
         
         let filter = '';
-        let baseZoom = effect.zoom || "1.25"; // الزوم الافتراضي 125%
-        let baseSpeed = effect.speed || "0.80"; // السرعة الافتراضية 0.80
+        let baseZoom = effect.zoom || "1.25";
+        let baseSpeed = effect.speed || "0.80";
+        
+        console.log(`      ➤ تأثير ${i+1}: ${effect.type} (${effect.duration} ثانية)`);
         
         switch(effect.type) {
-            case 'normal_zoom': // لقطة بزوم 125% وسرعة 0.80
-                filter = `setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'normal_zoom':
+                // تعديل: نستخدم trim عشان نحدد المدة المطلوبة بعد تغيير السرعة
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'slow_zoom': // لقطة بطيئة مع زوم
-                filter = `setpts=${effect.speed || baseSpeed}*PTS,zoompan=z='${effect.zoom || baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'slow_zoom':
+            case 'fast_zoom':
+            case 'slow':
+            case 'fast':
+                filter = `trim=0:${effect.duration},setpts=${effect.speed || baseSpeed}*PTS,zoompan=z='${effect.zoom || baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'fast_zoom': // لقطة سريعة مع زوم
-                filter = `setpts=${effect.speed || baseSpeed}*PTS,zoompan=z='${effect.zoom || baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'freeze_smooth':
+                // تعديل: استخدام loop بشكل صحيح للتجميد
+                filter = `trim=0:${effect.duration},loop=loop=${effect.duration * 30 - 1}:size=1,setpts=N/FRAME_RATE/TB,zoompan=z='1.25':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'freeze_smooth': // تجميد ناعم مع انتقال
-                filter = `loop=loop=${effect.duration * 30}:size=1,setpts=N/FRAME_RATE/TB,zoompan=z='1.25':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'zoom':
+            case 'zoom_in_smooth':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,zoompan=z='min(zoom+0.02,${effect.value || "1.3"})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'zoom': // زوم عادي
-            case 'zoom_in_smooth': // زوم داخلي ناعم
-                filter = `setpts=${baseSpeed}*PTS,zoompan=z='min(zoom+0.02,${effect.value || "1.3"})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'zoom_out_smooth':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,zoompan=z='max(zoom-0.02,${effect.value || "0.9"})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'zoom_out_smooth': // زوم خارجي ناعم
-                filter = `setpts=${baseSpeed}*PTS,zoompan=z='max(zoom-0.02,${effect.value || "0.9"})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'reverse':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,reverse,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'reverse': // عكس مع زوم وسرعة
-                filter = `setpts=${baseSpeed}*PTS,reverse,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'reverse_slow':
+                filter = `trim=0:${effect.duration},setpts=${effect.speed || "0.75"}*PTS,reverse,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'reverse_slow': // عكس بطيء
-                filter = `setpts=${effect.speed || "0.75"}*PTS,reverse,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'reverse_zoom_smooth':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,reverse,zoompan=z='min(zoom+0.02,${effect.value || "1.2"})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'reverse_zoom_smooth': // عكس مع زوم ناعم
-                filter = `setpts=${baseSpeed}*PTS,reverse,zoompan=z='min(zoom+0.02,${effect.value || "1.2"})':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'zoom_up_smooth':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,zoompan=z='min(zoom+0.02,${effect.value || "1.25"})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-10':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'zoom_up_smooth': // زوم مع تحريك للأعلى
-                filter = `setpts=${baseSpeed}*PTS,zoompan=z='min(zoom+0.02,${effect.value || "1.25"})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-10':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'mirror':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,hflip,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'mirror': // قلب أفقي
-                filter = `setpts=${baseSpeed}*PTS,hflip,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'brightness':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,eq=brightness=${effect.value || "0.15"},zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'brightness': // سطوع
-                filter = `setpts=${baseSpeed}*PTS,eq=brightness=${effect.value || "0.15"},zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'contrast':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,eq=contrast=${effect.value || "1.3"},zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'contrast': // تباين
-                filter = `setpts=${baseSpeed}*PTS,eq=contrast=${effect.value || "1.3"},zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'blur_light':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,boxblur=${effect.value || "3"}:1,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'blur_light': // Blur خفيف
-                filter = `setpts=${baseSpeed}*PTS,boxblur=${effect.value || "3"}:1,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'shake_light':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height},shake=1.0:2:5`;
                 break;
                 
-            case 'shake_light': // اهتزاز خفيف
-                filter = `setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height},shake=1.0:2:5`;
+            case 'shake_very_light':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height},shake=0.5:1:3`;
                 break;
                 
-            case 'shake_very_light': // اهتزاز خفيف جداً
-                filter = `setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height},shake=0.5:1:3`;
+            case 'move_right_smooth':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,pad=iw+100:ih:ow-100:0,zoompan=z='${baseZoom}':x='min(100,on)*1.5':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
-            case 'move_right_smooth': // تحريك يمين ناعم
-                filter = `setpts=${baseSpeed}*PTS,pad=iw+100:ih:ow-100:0,zoompan=z='${baseZoom}':x='min(100,on)*1.5':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
-                break;
-                
-            case 'move_left_smooth': // تحريك يسار ناعم
-                filter = `setpts=${baseSpeed}*PTS,pad=iw+100:ih:0:0,zoompan=z='${baseZoom}':x='max(0,100-on)*1.5':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
-                break;
-                
-            case 'slow': // سرعة بطيئة
-                filter = `setpts=${effect.speed || baseSpeed}*PTS,zoompan=z='${effect.zoom || baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
-                break;
-                
-            case 'fast': // سرعة سريعة
-                filter = `setpts=${effect.speed || baseSpeed}*PTS,zoompan=z='${effect.zoom || baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+            case 'move_left_smooth':
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,pad=iw+100:ih:0:0,zoompan=z='${baseZoom}':x='max(0,100-on)*1.5':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
                 break;
                 
             default:
-                filter = `setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
+                filter = `trim=0:${effect.duration},setpts=${baseSpeed}*PTS,zoompan=z='${baseZoom}':d=${effect.duration * 30}:fps=30:s=${width}x${height}`;
         }
         
-        const inputFile = i === 0 ? originalClip : effectFiles[i-1];
-        
-        // تطبيق التأثير مع الحفاظ على الجودة (استخدام slower للحصول على جودة أفضل)
+        // تطبيق التأثير
         try {
             execSync(
-                `ffmpeg -y -i "${inputFile}" -vf "${filter}" -c:v libx264 -preset slower -crf 18 -t ${effect.duration} "${effectOutput}"`,
+                `ffmpeg -y -i "${currentInput}" -vf "${filter}" -c:v libx264 -preset slower -crf 18 -t ${effect.duration} "${effectOutput}"`,
                 { stdio: 'pipe' }
             );
         } catch (error) {
+            console.log(`      ⚠️ فشل التأثير المتقدم، استخدام تأثير بسيط`);
             // إذا فشل، نستخدم نسخة احتياطية بسيطة
             execSync(
-                `ffmpeg -y -i "${inputFile}" -vf "setpts=0.8*PTS,zoompan=z='1.25':d=${effect.duration * 30}:fps=30" -c:v libx264 -preset medium -t ${effect.duration} "${effectOutput}"`,
+                `ffmpeg -y -i "${currentInput}" -vf "trim=0:${effect.duration},setpts=1*PTS,zoompan=z='1.25':d=${effect.duration * 30}:fps=30" -c:v libx264 -preset medium -t ${effect.duration} "${effectOutput}"`,
                 { stdio: 'pipe' }
             );
         }
         
         effectFiles.push(effectOutput);
+        currentInput = effectOutput;
     }
     
     // دمج جميع التأثيرات للمشهد الواحد
@@ -349,7 +358,7 @@ async function applyTemplate(videoPath, startTime, sceneIndex, templateIndex, ou
         try { fs.unlinkSync(f); } catch (e) {}
     });
     try { fs.unlinkSync(listFile); } catch (e) {}
-    try { fs.unlinkSync(originalClip); } catch (e) {}
+    try { fs.unlinkSync(baseClip); } catch (e) {}
     
     return outputPath;
 }
@@ -391,7 +400,6 @@ async function downloadVideo(url, outputPath) {
 function mergeWithAudio(videoPath, audioPath, outputPath) {
     console.log("🎵 دمج الفيديو مع الصوت...");
     
-    // نستخدم filter لموازنة الصوت (لا يكون مرتفع جداً)
     execSync(
         `ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest -af "volume=0.9" "${outputPath}"`,
         { stdio: 'pipe' }
@@ -404,9 +412,10 @@ function mergeWithAudio(videoPath, audioPath, outputPath) {
 function addSmoothTransitions(inputVideo, outputVideo) {
     console.log("🔄 إضافة انتقالات ناعمة بين المشاهد...");
     
-    // نضيف fade in/out بسيط للفيديو كامل
+    const duration = getVideoDuration(inputVideo);
+    
     execSync(
-        `ffmpeg -y -i "${inputVideo}" -vf "fade=t=in:st=0:d=0.5,fade=t=out:st=${getVideoDuration(inputVideo)-0.5}:d=0.5" -c:a copy "${outputVideo}"`,
+        `ffmpeg -y -i "${inputVideo}" -vf "fade=t=in:st=0:d=0.5,fade=t=out:st=${duration-0.5}:d=0.5" -c:a copy "${outputVideo}"`,
         { stdio: 'pipe' }
     );
     
@@ -427,7 +436,7 @@ function getVideoDuration(videoPath) {
 
 // ============= الوظيفة الرئيسية =============
 async function main() {
-    console.log("🚀 بدء مشروع ملخص الأفلام التلقائي (بجودة عالية ومناسبة لليوتيوب)");
+    console.log("🚀 بدء مشروع ملخص الأفلام التلقائي (بجودة عالية)");
     console.log("=".repeat(60));
     
     const videoUrl = process.argv[2];
@@ -458,8 +467,9 @@ async function main() {
     const audioDuration = getAudioDuration(audioFile);
     console.log(`🎵 مدة ملف الصوت: ${audioDuration.toFixed(1)} ثانية`);
     
-    // حساب عدد المشاهد المطلوبة (كل مشهد حوالي 6-8 ثواني حسب القالب)
-    const avgSceneDuration = 7.0;
+    // حساب عدد المشاهد المطلوبة (كل مشهد حسب متوسط القوالب)
+    // نقدر متوسط مدة المشهد بحوالي 7-8 ثواني
+    const avgSceneDuration = 7.5;
     const requiredScenesCount = Math.floor(audioDuration / avgSceneDuration);
     console.log(`📊 نحتاج: ${requiredScenesCount} مشهد تقريباً`);
     
@@ -477,7 +487,7 @@ async function main() {
     const downloadedVideo = "downloads/video.mp4";
     await downloadVideo(videoUrl, downloadedVideo);
     
-    // 2️⃣ معالجة المشاهد (باستخدام القوالب بالترتيب - بدون عشوائية)
+    // 2️⃣ معالجة المشاهد
     console.log("\n🎬 المرحلة 2: معالجة المشاهد...");
     const sceneVideos = [];
     
@@ -488,7 +498,6 @@ async function main() {
         console.log(`   📝 ${scene.text.substring(0, 50)}${scene.text.length > 50 ? '...' : ''}`);
         
         const finalScenePath = `temp/scene_${i}_final.mp4`;
-        // نستخدم i كـ template index لتكرار القوالب بالترتيب
         await applyTemplate(downloadedVideo, scene.start, i, i, finalScenePath);
         sceneVideos.push(finalScenePath);
     }
@@ -528,7 +537,6 @@ async function main() {
     console.log(`   ⏱️  المدة: ${finalDuration.toFixed(1)} ثانية`);
     console.log(`   🎬 المشاهد: ${selectedScenes.length}`);
     console.log(`   🎨 القوالب: ${templates.length} قالب (تطبيق دوري)`);
-    console.log(`   ✨ جميع اللقطات: زوم 125% + سرعة 0.80 (لطيف للمشاهد)`);
     
     // تنظيف
     console.log("\n🧹 تنظيف الملفات المؤقتة...");
@@ -544,7 +552,7 @@ async function main() {
         }
     } catch (error) {}
     
-    console.log("\n✨ انتهى! الفيديو جاهز للاستخدام العادل على يوتيوب");
+    console.log("\n✨ انتهى! الفيديو جاهز");
 }
 
 if (require.main === module) {
