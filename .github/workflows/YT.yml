@@ -3,7 +3,7 @@ name: Upload YouTube Video
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'    # كل 15 دقيقة
+    - cron: '* * */7 *  *'    # كل 15 دقيقة
 
 jobs:
   upload:
