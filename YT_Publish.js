@@ -11,9 +11,9 @@ const execPromise = util.promisify(exec);
 
 // ========== الإعدادات ==========
 const YOUTUBE_CONFIG = {
-  clientId: "927100602871-1qrd7dovb5r7bog4m3humbphsknqg28n.apps.googleusercontent.com",
-  clientSecret: "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",
-  refreshToken: "1//04rPvk4DTxdEwCgYIARAAGAQSNwF-L9IrzQx91NlRhADCvWoeGNqIJ6GwR449s44DZgSmRug90lWjYLAM4w3VklvseEarX5iCa7o"
+  clientId: "80097892689-fatsck4rfg2n7g66ma33fm9jp24a3fes.apps.googleusercontent.com",
+  clientSecret: "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",
+  refreshToken: "1//04HafPqhYssCbCgYIARAAGAQSNwF-L9IrYzZJy2ssGac1EdAhImYb6LCyO7ukYnDWyp-gJCiUYz_DMqW64L4_sukg00tStq2aSqM"
 };
 const SERIES_URL = "https://laroza.bond/category.php?cat=ramadan-2026";
 const WEBSITE_URL = "https://redirectauto4kiro.blogspot.com/";
