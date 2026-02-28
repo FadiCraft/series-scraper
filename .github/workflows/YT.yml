@@ -1,33 +1,48 @@
-name: YouTube Auto Publisher
+name: Upload YouTube Video
 
 on:
-  workflow_dispatch: # للتشغيل اليدوي عند الحاجة
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # تشغيل كل 6 ساعات (آمن جداً)
+    - cron: '*/15 * * * *'    # كل 15 دقيقة
 
 jobs:
-  build:
+  upload:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install System Dependencies
+      - name: Install Dependencies
+        run: npm install axios cheerio fs-extra googleapis puppeteer
+
+      - name: Install FFmpeg and wkhtmltopdf
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-dejavu
+          sudo apt-get install -y ffmpeg wkhtmltopdf xvfb
+          ffmpeg -version
+          wkhtmltoimage --version
 
-      - name: Install Project Dependencies
-        run: npm install axios cheerio fs-extra googleapis google-tts-api
+      - name: Install Puppeteer dependencies
+        run: |
+          sudo apt-get install -y \
+            libgbm-dev \
+            libxkbcommon-x11-0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxrandr2 \
+            libgbm1 \
+            libpango-1.0-0 \
+            libcairo2
 
-      - name: Run Automation Script
+      - name: Run Upload Script
+        run: node YT_Publish.js
         env:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
-        run: node YT_Publish.js
