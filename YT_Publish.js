@@ -12,7 +12,7 @@ const execPromise = util.promisify(exec);
 const YOUTUBE_CONFIG = {
   clientId: "80097892689-fatsck4rfg2n7g66ma33fm9jp24a3fes.apps.googleusercontent.com",
   clientSecret: "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",
-  refreshToken: "1//04HafPqhYssCbCgYIARAAGAQSNwF-L9IrYzZJy2ssGac1EdAhImYb6LCyO7ukYnDWyp-gJCiUYz_DMqW64L4_sukg00tStq2aSqM"
+  refreshToken: "1//0402McOnnSfYTCgYIARAAGAQSNwF-L9IrHIeF6t-siXlEk4OREx_1gtOf8_8qEdHq3kDNHMnWpOMWyomF6FndgZvgiFwGYMyAwd4"
 };
 const SERIES_URL = "https://laroza.bond/category.php?cat=ramadan-2026";
 
