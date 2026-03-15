@@ -700,11 +700,11 @@ async function createPoster(episode) {
                 <div class="brand-name">استمتع الأن</div>
                 
                 <div class="btn-link">
-     أحدث الأفلام والمسلسلات العربية والأجنبية والأنمي والمباريات بجودة عالية 
+استعد لأحدث الأفلام والمسلسلات
 </div>
                 
                 <div class="footer-brand">
-                    كيرو زوزو | Kiro Zozo
+                   Kiro Zozo
                 </div>
             </div>
         </div>
@@ -924,7 +924,7 @@ async function uploadToYoutube(episode) {
       episode.shortTitle,
       'مسلسلات رمضان',
       'رمضان 2026',
-      'شاهد الآن',
+      'كيرو زوزو',
       SITE_NAME
     ].filter(k => k && k.length > 0).map(k => k.trim());
     
@@ -933,7 +933,7 @@ async function uploadToYoutube(episode) {
     const videoDescription = `
 ✨ ${episode.fullTitle} - ${SITE_NAME}
 
-📺 شاهد الحلقة كاملة على ${SITE_NAME}:
+📺  الحلقة   ${SITE_NAME}:
 🔗 ${watchLink}
 
 ⏱️ مدة الحلقة الكاملة: ${episode.duration}
@@ -942,7 +942,7 @@ async function uploadToYoutube(episode) {
 
 ${uniqueKeywords.slice(0, 10).map(k => `#${k.replace(/[^\w\u0600-\u06FF]/g, '_')}`).join(' ')}
 
-#مسلسلات_رمضان #${episode.shortTitle.replace(/\s+/g, '_')}_${episode.episodeNumber} #لاروزا #شاهد_الآن
+#مسلسلات_رمضان #${episode.shortTitle.replace(/\s+/g, '_')}_${episode.episodeNumber} #زيلز #Kiro_zozo
 #shorts #reels #رمضان_2026 #كيرو_زوزو
     `.trim();
 
