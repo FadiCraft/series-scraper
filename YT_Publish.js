@@ -696,15 +696,15 @@ async function createPoster(episode) {
             <div>
                 <div class="stars-rating"></div>
                 
-                <div class="quality-text">رابط الحلقة بالوصف</div>
-                <div class="brand-name">شـــاهـــد الأن</div>
+                <div class="quality-text">معلومات الحلقة بالوصف</div>
+                <div class="brand-name">استمتع الأن</div>
                 
                 <div class="btn-link">
- اضغط على الرابط بالوصف
+     أحدث الأفلام والمسلسلات العربية والأجنبية والأنمي والمباريات بجودة عالية 
 </div>
                 
                 <div class="footer-brand">
-                    WWW.KIROZOZO.XYZ
+                    كيرو زوزو | Kiro Zozo
                 </div>
             </div>
         </div>
