@@ -12,8 +12,8 @@ const BLOGGER_CONFIG = {
 
 // ===== الإعدادات العامة =====
 const SETTINGS = {
-    targetUrl: 'https://larooza.life/category.php?cat=ramadan-2026',
-    baseUrl: 'https://larooza.life',
+    targetUrl: 'https://laroza.boats/category.php?cat=ramadan-2026',
+    baseUrl: 'https://laroza.boats',
     stateFile: 'state.json',
     postsDir: 'posts',
     maxEpisodes: 30,
