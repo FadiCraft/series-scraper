@@ -4,7 +4,7 @@ const fs = require('fs-extra');
 
 // ===== إعدادات Blogger =====
 const BLOGGER_CONFIG = {
-    blogId: '8351599421307503563',
+    blogId: '8249860422330426533',
     clientId: '676395600013-5gmnle6clg9f5mqfo7uci45nqurl0hsi.apps.googleusercontent.com',
     clientSecret: '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',
     refreshToken: '1//05-y_lVbQzPs1CgYIARAAGAUSNwF-L9IrtEhFugmwQXjaGN--8EVbAZZwmAGlroNEXUey43nFiT6hg0MGAHqaKU_oJtdXH_1lFrw'
